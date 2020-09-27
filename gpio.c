@@ -46,18 +46,18 @@
 
 static void enable_rcc(GPIO_TypeDef *gpio)
 {
-	if(gpio == GPIOA)
-		RCC->AHBRSTR |= RCC_AHBENR_GPIOAEN;
+	if (gpio == GPIOA)
+		RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
 	else if(gpio == GPIOB)
-		RCC->AHBRSTR |= RCC_AHBENR_GPIOBEN;
+		RCC->AHBENR |= RCC_AHBENR_GPIOBEN;
 	else if(gpio == GPIOC)
-		RCC->AHBRSTR |= RCC_AHBENR_GPIOCEN;
+		RCC->AHBENR |= RCC_AHBENR_GPIOCEN;
 	else if(gpio == GPIOD)
-		RCC->AHBRSTR |= RCC_AHBENR_GPIODEN;
+		RCC->AHBENR |= RCC_AHBENR_GPIODEN;
 	else if(gpio == GPIOE)
-		RCC->AHBRSTR |= RCC_AHBENR_GPIOEEN;
+		RCC->AHBENR |= RCC_AHBENR_GPIOEEN;
 	else if(gpio == GPIOF)
-		RCC->AHBRSTR |= RCC_AHBENR_GPIOFEN;
+		RCC->AHBENR |= RCC_AHBENR_GPIOFEN;
 }
 
 void gpio_set_mode(GPIO_TypeDef *gpio, uint8_t pin_num, enum gpio_mode_t mode)
