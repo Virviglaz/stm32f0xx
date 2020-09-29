@@ -36,7 +36,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * STM32F10x open source driver
+ * STM32F0xx open source driver
  *
  * Contact Information:
  * Pavel Nadein <pavelnadein@gmail.com>
@@ -47,24 +47,24 @@
 static void enable_rcc(GPIO_TypeDef *gpio)
 {
 	if (gpio == GPIOA)
-		RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
+		BIT_SET(RCC->AHBENR, RCC_AHBENR_GPIOAEN);
 	else if(gpio == GPIOB)
-		RCC->AHBENR |= RCC_AHBENR_GPIOBEN;
+		BIT_SET(RCC->AHBENR, RCC_AHBENR_GPIOBEN);
 	else if(gpio == GPIOC)
-		RCC->AHBENR |= RCC_AHBENR_GPIOCEN;
+		BIT_SET(RCC->AHBENR, RCC_AHBENR_GPIOCEN);
 	else if(gpio == GPIOD)
-		RCC->AHBENR |= RCC_AHBENR_GPIODEN;
+		BIT_SET(RCC->AHBENR, RCC_AHBENR_GPIODEN);
 	else if(gpio == GPIOE)
-		RCC->AHBENR |= RCC_AHBENR_GPIOEEN;
+		BIT_SET(RCC->AHBENR, RCC_AHBENR_GPIOEEN);
 	else if(gpio == GPIOF)
-		RCC->AHBENR |= RCC_AHBENR_GPIOFEN;
+		BIT_SET(RCC->AHBENR, RCC_AHBENR_GPIOFEN);
 }
 
 void gpio_set_mode(GPIO_TypeDef *gpio, uint8_t pin_num, enum gpio_mode_t mode)
 {
 	pin_num <<= 1;
-	gpio->MODER &= ~(3 << pin_num);
-	gpio->MODER |= (mode << pin_num);
+	BIT_CLR(gpio->MODER, 3 << pin_num);
+	BIT_SET(gpio->MODER, mode << pin_num);
 }
 
 void gpio_set_output(GPIO_TypeDef *gpio, uint8_t pin_num, enum gpio_out_t push)
@@ -77,30 +77,29 @@ void gpio_set_speed(GPIO_TypeDef *gpio, uint8_t pin_num,
 	enum gpio_speed_t speed)
 {
 	pin_num <<= 1;
-	gpio->OSPEEDR &= ~(3 << pin_num);
-	gpio->OSPEEDR |= (speed << pin_num);
+	BIT_CLR(gpio->OSPEEDR, 3 << pin_num);
+	BIT_SET(gpio->OSPEEDR, speed << pin_num);
 }
 
 void gpio_set_pull(GPIO_TypeDef *gpio, uint8_t pin_num,
 	enum gpio_pull_t pull)
 {
 	pin_num <<= 1;
-	gpio->PUPDR &= ~(3 << pin_num);
-	gpio->PUPDR |= (pull << pin_num);
+	BIT_CLR(gpio->PUPDR, 3 << pin_num);
+	BIT_SET(gpio->PUPDR, pull << pin_num);
 }
 
 void gpio_set_alt_func(GPIO_TypeDef *gpio, uint8_t pin_num,
 	enum gpio_alt_t alt_func)
 {
-	if (pin_num < 8) {
-		pin_num <<= 2;
-		gpio->AFR[0] &= ~(alt_func << pin_num);
-		gpio->AFR[0] |= alt_func << pin_num;
+	pin_num <<= 2;
+
+	if (pin_num < 32) {
+		BIT_CLR(gpio->AFR[0], alt_func << 0xF);
+		BIT_SET(gpio->AFR[0], alt_func << pin_num);
 	} else {
-		pin_num -= 8;
-		pin_num <<= 2;
-		gpio->AFR[1] &= ~(alt_func << pin_num);
-		gpio->AFR[1] |= alt_func << pin_num;
+		BIT_CLR(gpio->AFR[1], alt_func << 0xF);
+		BIT_SET(gpio->AFR[1], alt_func << (pin_num - 32));
 	}
 }
 

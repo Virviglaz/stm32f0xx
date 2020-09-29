@@ -66,8 +66,13 @@
 #endif
 
 #ifndef BIT
-#define BIT(a)			(1 << a)
+#define BIT(a)			(1 << (a))
 #endif
+
+#define BIT_SET(reg, bit)	(reg |= (bit))
+#define BIT_CLR(reg, bit)	(reg &= ~(bit))
+#define WAIT_BIT_SET(reg, bit)	while (!(reg & bit))
+#define WAIT_BIT_CLR(reg, bit)	while (reg & bit)
 
 /** @addtogroup Library_configuration_section
   * @{
