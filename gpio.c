@@ -95,11 +95,12 @@ void gpio_set_alt_func(GPIO_TypeDef *gpio, uint8_t pin_num,
 	pin_num <<= 2;
 
 	if (pin_num < 32) {
-		BIT_CLR(gpio->AFR[0], alt_func << 0xF);
+		BIT_CLR(gpio->AFR[0], 0xF << pin_num);
 		BIT_SET(gpio->AFR[0], alt_func << pin_num);
 	} else {
-		BIT_CLR(gpio->AFR[1], alt_func << 0xF);
-		BIT_SET(gpio->AFR[1], alt_func << (pin_num - 32));
+		pin_num -= 32;
+		BIT_CLR(gpio->AFR[1], 0xF << pin_num);
+		BIT_SET(gpio->AFR[1], alt_func << pin_num);
 	}
 }
 

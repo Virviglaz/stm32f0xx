@@ -41,87 +41,59 @@
  * Contact Information:
  * Pavel Nadein <pavelnadein@gmail.com>
  */
+ 
+#ifndef __DMA_H__
+#define __DMA_H__
 
-#include "rcc.h"
+#ifdef __cplusplus
+ extern "C" {
+#endif
 
-/* macro to convert enum to value */
-#define AHB_DIV_VALUE(x)		(BIT(x - 7))
-#define APB_DIV_VALUE(x)		(BIT(x - 3))
+#include <stm32f0xx.h>
+#include <stdint.h>
 
-/* fixed high speed rc-based internal oscillator */
-#define HSI_CLOCK_FREQ			8000000
+/**
+  * @brief  Initialize DMA and find a channel.
+  * @param  channel: Number of channel or first free if 0.
+  * @param  handler: Pointer to function to be called at finish.
+  * @param  data: Pointer to data to be provided to handler.
+  *
+  * @retval 0 if failed, pointer to channel if found.
+  */
+DMA_Channel_TypeDef *get_dma_ch(uint8_t channel,
+	void (*handler)(void *data), void *data);
 
-/* default high speed rc-based external oscillator */
-#define HSE_CLOCK_FREQ			8000000
-
-static uint32_t hse_clock = HSE_CLOCK_FREQ;
-
-static uint32_t get_pll_freq(void)
+/**
+  * @brief  Release DMA channed and disable the interrupt.
+  * @param  ch: Pointer to DMA channel.
+  *
+  * @retval None.
+  */
+static inline void dma_release(DMA_Channel_TypeDef *ch)
 {
-	if (get_pll_source() == HSI_DIV2)
-		return HSI_CLOCK_FREQ >> 1;
-
-	return hse_clock / get_pll_prediv();
+	if (ch)
+		ch->CCR = 0;
 }
 
-static void rcc_configure_pll(uint32_t value)
-{
-	/* disable PLL */
-	BIT_CLR(RCC->CR, RCC_CR_PLLON);
+#ifdef FREERTOS
 
-	/* wait pll disable */
-	WAIT_BIT_CLR(RCC->CR, RCC_CR_PLLRDY);
+/**
+  * @brief  Copy data memory to memory using DMA and RTOS.
+  * @param  dst: pointer to the destination array.
+  * @param  src: pointer to the source of data to be copied.
+  * @param  size: number of bytes to copy.
+  *
+  * @retval 0 if failed, pointer to channel if found.
+  */
+void memcpy_dma8(uint8_t *dst, const uint8_t *src, uint16_t size);
+void memcpy_dma16(uint16_t *dst, const uint16_t *src, uint16_t size);
+void memcpy_dma32(uint32_t *dst, const uint32_t *src, uint16_t size);
 
-	set_pll_value(value);
+#endif /* FREERTOS */
 
-	/* enable PLL */
-	BIT_SET(RCC->CR, RCC_CR_PLLON);
-
-	/* wait pll enable */
-	WAIT_BIT_SET(RCC->CR, RCC_CR_PLLRDY);
+#ifdef __cplusplus
 }
+#endif
 
-struct system_clock_t *get_clocks(void)
-{
-	static struct system_clock_t clocks;
-	enum ahb_clock_source_t system_clock_source;
-
-	system_clock_source = get_ahb_clock_source();
-
-	switch (system_clock_source) {
-	case HSI_CLOCK:
-		clocks.system_freq = HSI_CLOCK_FREQ;
-		break;
-	case HSE_CLOCK:
-		clocks.system_freq = hse_clock;
-		break;
-	case PLL_CLOCK:
-		clocks.system_freq = get_pll_freq() * get_pll_value();
-		break;
-	}
-
-	/* SYSCLL / [AHB_DIV] = AHB frequency */
-	clocks.ahb_freq =
-		clocks.system_freq / AHB_DIV_VALUE(get_ahb_clock_divider());
-
-	/* AHB1 / [APB_DIV] = APB frequency */
-	clocks.apb1_freq =
-		clocks.system_freq / APB_DIV_VALUE(get_apb_clock_divider());
-
-	/* TODO: i'm not sure where apb2 is connected to */
-	clocks.apb2_freq = clocks.apb1_freq;
-
-	clocks.ahb_source = get_ahb_clock_source();
-	
-	return &clocks;
-}
-
-void rcc_enable_hsi_pll(uint8_t pll)
-{
-	set_ahb_clock_source(HSI_CLOCK);
-
-	rcc_configure_pll(pll);
-
-	set_ahb_clock_source(PLL_CLOCK);
-}
+#endif /* __DMA_H__ */
 

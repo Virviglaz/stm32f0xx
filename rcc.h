@@ -86,7 +86,8 @@ enum apb_clock_divider_t {
 struct system_clock_t {
 	uint32_t system_freq;
 	uint32_t ahb_freq;
-	uint32_t apb_freq;
+	uint32_t apb1_freq;
+	uint32_t apb2_freq;
 	enum ahb_clock_source_t ahb_source;
 };
 
