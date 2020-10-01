@@ -22,7 +22,7 @@ gpio_clr(PB01);
 ## UART example
 ```c
 /* pointer to uart settings and buffers */
-const struct uart_dev_t *uart;
+uart_dev uart;
 
 /* uart rx handler, executed from ISR when data is filled or end of a line detected */
 static void uart_rx_handler(char *buffer, uint16_t size, void *data)
@@ -32,6 +32,9 @@ static void uart_rx_handler(char *buffer, uint16_t size, void *data)
 
 /* find uart connected to GPIOB, pin 6 (can be tx or rx pin) */
 uart = find_uart_dev(GPIOB, BIT(6));
+or
+/* use UART1 insted if you know where it is connected to */
+uart = get_uart_dev(1);
 
 /* err will be 0 if uart manage to initialize with 9600 bod */
 err = uart_init(uart, 9600);
