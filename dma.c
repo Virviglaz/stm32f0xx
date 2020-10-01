@@ -44,12 +44,13 @@
 
 #include "dma.h"
 #include <string.h>
+#include <stdbool.h>
 
 #define NOF_DMA_CHANNELS	5
 
 static struct isr_t {
-	void (*handler)(void *data);
-	void *data;
+	void (*handler)(void *data);	/* also used to mark 'occupied' */
+	void *data;			/* private data if needed */
 } isrs[NOF_DMA_CHANNELS] = { 0 };
 
 const DMA_Channel_TypeDef *dma1_chs[] = {
@@ -89,72 +90,90 @@ static void dma_enable_isr(uint8_t channel)
 DMA_Channel_TypeDef *get_dma_ch(uint8_t channel,
 	void (*handler)(void *data), void *data)
 {
-
-	uint8_t i;
+	DMA_Channel_TypeDef *ch;
+	struct isr_t *isr;
 
 	RCC->AHBENR |= RCC_AHBENR_DMA1EN;
 
-	if (channel > ARRAY_SIZE(dma1_chs))
+	if (channel >= ARRAY_SIZE(dma1_chs))
 		return 0;
 
-	/* find specified channel */
-	if (channel) {
-		DMA_Channel_TypeDef *ch;
-		channel--;
-		ch = (void *)dma1_chs[channel];
+	channel--;
+	ch = (void *)dma1_chs[channel];
+	isr = &isrs[channel];
 
-		/* check channel is free */
-		if (ch->CCR & DMA_CCR_EN)
-			return 0;
+	/* check channel is free */
+	if (isr->handler)
+		return 0;
 
-		/* assign handler */
-		isrs[channel].handler = handler;
-		isrs[channel].data = data;
+	/* assign handler */
+	isrs[channel].handler = handler;
+	isrs[channel].data = data;
 
-		dma_enable_isr(channel);
+	dma_enable_isr(channel);
 
-		return ch;
-	}
+	return ch;
+}
+
+
+DMA_Channel_TypeDef *find_free_dma_ch(uint8_t *found,
+	void (*handler)(void *data), void *data)
+{
+	uint8_t i;
+	struct isr_t *isr;
 
 	/* find first free channel */
 	for (i = 0; i != ARRAY_SIZE(dma1_chs); i++) {
-		DMA_Channel_TypeDef *ch = (void *)dma1_chs[i];
-		if (ch->CCR & DMA_CCR_EN)
-			continue;
+		isr = &isrs[i];
 
-		/* assign handler */
-		isrs[i].handler = handler;
-		isrs[i].data = data;
-
-		dma_enable_isr(i);
-		return ch;
+		/* check channel is free */
+		if (!isr->handler) {
+			*found = i;
+			return get_dma_ch(i, handler, data);
+		}
 	}
 
 	/* no channels found */
 	return 0;
 }
 
+void dma_release(uint8_t ch)
+{
+	struct isr_t *isr;
+	DMA_Channel_TypeDef *dma_ch;
+
+	if (!ch) /* skip dummy action */
+		return;
+
+	ch--;
+	isr = &isrs[ch];
+	dma_ch = (void *)dma1_chs[ch];
+
+	dma_ch->CCR = 0;	/* disable the channel */
+	isr->handler = 0;	/* remove the handler and mark 'free' */
+}
+
 void DMA1_Channel1_IRQHandler(void)
 {
 	DMA1->IFCR = DMA_IFCR_CGIF1;
-	dma_release(DMA1_Channel1);
-	isrs[0].handler(isrs[0].data);
+	if (isrs[0].handler)
+		isrs[0].handler(isrs[0].data);
 }
 
 void DMA1_Channel2_3_IRQHandler(void)
 {
 	uint8_t ch_num = DMA1->ISR & DMA_ISR_TCIF2 ? 1 : 2;
 	DMA1->IFCR = ch_num == 1 ? DMA_IFCR_CGIF2 : DMA_IFCR_CGIF3;
-	isrs[ch_num].handler(isrs[ch_num].data);
-	dma_release((void *)dma1_chs[ch_num]);
+	if (isrs[ch_num].handler)
+		isrs[ch_num].handler(isrs[ch_num].data);
 }
 
 void DMA1_Channel4_5_IRQHandler(void)
 {
 	uint8_t ch_num = DMA1->ISR & DMA_ISR_TCIF4 ? 3 : 4;
 	DMA1->IFCR = ch_num == 1 ? DMA_IFCR_CGIF4 : DMA_IFCR_CGIF5;
-	isrs[ch_num].handler(isrs[ch_num].data);
-	dma_release((void *)dma1_chs[ch_num]);
+	if (isrs[ch_num].handler)
+		isrs[ch_num].handler(isrs[ch_num].data);
 }
 
 #ifndef FREERTOS
@@ -165,23 +184,18 @@ static void handler(void *data)
 	busy = 0;
 }
 
-static void memcpy_dma(void *dst, const void *src, uint16_t size, uint16_t flag)
+void memcpy_dma(void *dst, const void *src, uint16_t size, uint16_t flag)
 {
-	DMA_Channel_TypeDef *ch;
-
-	ch = get_dma_ch(0, handler, 0);
+	uint8_t dma_num;
+	DMA_Channel_TypeDef *ch = find_free_dma_ch(&dma_num, handler, 0);
 
 	if (!ch) /* failed to get channel, use cpu instead */
 		memcpy(dst, src, size);
 	else {
 		busy = !0;
-		ch->CNDTR = size;
-		ch->CMAR = (uint32_t)src;
-		ch->CPAR = (uint32_t)dst;
-		ch->CCR = DMA_CCR_MEM2MEM | DMA_CCR_MINC | DMA_CCR_PINC | \
-			DMA_CCR_DIR | DMA_CCR_TCIE | DMA_CCR_EN | flag;
+		dma_setup(ch, (void *)src, dst, size, DMA_MEM2MEM_B | flag);
 		while(busy) { }
-		dma_release(ch);
+		dma_release(dma_num);
 	}
 }
 
@@ -224,17 +238,3 @@ static void memcpy_dma(void *dst, const void *src, uint16_t size, uint16_t flag)
 
 #endif /* FREERTOS */
 
-void memcpy_dma8(uint8_t *dst, const uint8_t *src, uint16_t size)
-{
-	memcpy_dma(dst, src, size, 0);
-}
-
-void memcpy_dma16(uint16_t *dst, const uint16_t *src, uint16_t size)
-{
-	memcpy_dma(dst, src, size, DMA_CCR_PSIZE_0 | DMA_CCR_MSIZE_0);
-}
-
-void memcpy_dma32(uint32_t *dst, const uint32_t *src, uint16_t size)
-{
-	memcpy_dma(dst, src, size, DMA_CCR_PSIZE_1 | DMA_CCR_MSIZE_1);
-}

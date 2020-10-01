@@ -83,6 +83,7 @@ struct uart_buf_t {
 		uint16_t cnt;		/* byte counter */
 		uart_tx_handler_t handler; /* end of transfer handler */
 		void *data;		/* private data for generic use */
+		uint8_t dma_ch;		/* number of TX DMA channel used */
 		bool done;		/* set to true when done */
 	} tx;
 };
@@ -128,10 +129,10 @@ uart_dev find_uart_dev(GPIO_TypeDef *gpio, uint16_t pin_mask)
 	uint8_t i;
 
 	for (i = 0; i != ARRAY_SIZE(pins); i++) {
-		uart_dev p = &pins[i];
-		if (p->gpio == gpio)
-			if (p->tx_pin & pin_mask || p->rx_pin & pin_mask)
-				return p;
+		uart_dev dev = &pins[i];
+		if (dev->gpio == gpio)
+			if (dev->tx_pin & pin_mask || dev->rx_pin & pin_mask)
+				return dev;
 	}
 
 	return 0;
@@ -142,9 +143,9 @@ uart_dev get_uart_dev(uint8_t num)
 	uint8_t i;
 
 	for (i = 0; i != ARRAY_SIZE(pins); i++) {
-		uart_dev p = &pins[i];
-		if (p->index == num)
-			return p;
+		uart_dev dev = &pins[i];
+		if (dev->index == num)
+			return dev;
 	}
 
 	return 0;
@@ -256,6 +257,8 @@ static void tx_handler(void *data)
 {
 	struct uart_buf_t *b = data;
 
+	dma_release(b->tx.dma_ch);
+
 	if (b->tx.handler)
 		b->tx.handler(b->tx.data);
 
@@ -292,12 +295,10 @@ int uart_send_data(uart_dev dev, char *buf, uint16_t size,
 	if (dev->tx_dma_ch) { /* use DMA */
 		ch = get_dma_ch(dev->tx_dma_ch, tx_handler, b);
 		if (ch) {
+			b->tx.dma_ch = dev->tx_dma_ch;
 			BIT_SET(uart->CR3, USART_CR3_DMAT);
-			ch->CMAR = (uint32_t)buf;
-			ch->CPAR = (uint32_t)&uart->TDR;
-			ch->CNDTR = size;
-			ch->CCR = DMA_CCR_MINC | DMA_CCR_DIR | DMA_CCR_TCIE | \
-				DMA_CCR_EN;
+			dma_setup(ch, buf, (void *)&uart->TDR, size,
+				DMA_FLAG_MEM2DEV_B);
 		} else { /* use interrupt */
 			BIT_SET(uart->CR1, USART_CR1_TCIE);
 			tx_send(uart, b);

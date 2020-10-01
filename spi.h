@@ -41,99 +41,86 @@
  * Contact Information:
  * Pavel Nadein <pavelnadein@gmail.com>
  */
-
-#ifndef __UART_H__
-#define __UART_H__
+ 
+#ifndef __SPI_H__
+#define __SPI_H__
 
 #ifdef __cplusplus
  extern "C" {
 #endif
 
+#include <stm32f0xx.h>
 #include <stdint.h>
-#include "gpio.h"
+#include <stdbool.h>
 
-/* uart device struct accessible only from source */
-struct uart_dev_t;
-
-/* uart types redefenition */
-typedef const struct uart_dev_t * uart_dev;
-typedef void (*uart_tx_handler_t)(void *buffer);
-typedef void (*uart_rx_handler_t)(char *buffer, uint16_t size, void *data);
+/* spi types redefenition */
+typedef const struct spi_dev_t * spi_dev;
 
 /**
-  * @brief  Lookup for a gpio settings to configure the uart.
-  * This function helps you to find a proper connection to uart if you only
-  * know the where it is used. You should provide a gpio and any of tx/rx pins.
-  * @param  gpio: GPIO where one of the tx/rx pins are connected to.
+  * @brief  Lookup for a gpio settings to configure the spi.
+  * This function helps you to find a proper connection to spi if you only
+  * know the where it is used. You should provide a gpio and any of used pins.
+  * @param  gpio: GPIO where one of the MSCK/MISO/MOSI pins are connected to.
   * @param  pin_mask: pinmask of tx or rx pin.
   *
   * @retval 0 if no settings found or a pointer to struct if success.
   */
-uart_dev find_uart_dev(GPIO_TypeDef *gpio, uint16_t pin_mask);
+spi_dev find_spi_dev(GPIO_TypeDef *gpio, uint16_t pin_mask);
 
 /**
-  * @brief  Get uart by index.
-  * @param  num: inxex of UART [1..6] depends of device choosen.
+  * @brief  Get spi by index.
+  * @param  num: inxex of SPI [1 or 2] depends of device choosen.
   * @note   you can use find_uart_dev or get_uart_dev to get a uart settings.
   *
   * @retval 0 if no settings found or a pointer to struct if success.
   */
-uart_dev get_uart_dev(uint8_t num);
+spi_dev get_spi_dev(uint8_t num);
 
 /**
-  * @brief  Initialize UART.
-  * @param  dev: Pointer to settings struct.
-  * @param  freq: uart frequency.
+  * @brief  Initialize SPI master.
+  * @param  dev: pointer to device struct.
+  * @param  freq: Clock frequency in Hz.
+  * @param  clock_high: idle clock mode false = low, true = high.
+  *
+  * @retval 0 if no settings found or a pointer to struct if success.
+  */
+int spi_init(spi_dev dev, uint32_t freq, bool idle_clock_high);
+
+/**
+  * @brief  Write data from buffer to register.
+  * @param  dev: pointer to device struct.
+  * @param  gpio: Chip select gpio.
+  * @param  pin: Chip select pin.
+  * @param  reg: Register number to write to.
+  * @param  data: Pointer where the data is stored.
+  * @param  size: Amount of bytes to write.
   *
   * @retval 0 if success.
   */
-int uart_init(uart_dev dev, uint32_t freq);
+int spi_write_reg(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
+	uint8_t reg, uint8_t *data, uint16_t size);
 
 /**
-  * @brief  Enable receiving interrupt.
-  * @param  dev: Pointer to settings struct.
-  * @param  buf: Pointer to receiving buffer.
-  * @param  size: Maximum buffer size.
-  * @param  uart_rx_handler_t: Pointer handler function if needed.
-  * @param  data: Pointer private data if needed.
-  *
-  * @retval none.
-  */
-void uart_enable_rx(uart_dev dev, char *buf, uint16_t size,
-	uart_rx_handler_t handler, void *data);
-
-/**
-  * @brief  Disable receiving interrupt.
-  * @param  dev: Pointer to settings struct.
-  *
-  * @retval none.
-  */
-void uart_disable_rx(uart_dev dev);
-
-/**
-  * @brief  Send data to UART using DMA.
-  * @param  dev: Pointer to settings struct.
-  * @param  buf: Pointer to trasmitter buffer.
-  * @param  size: Maximum buffer size.
-  * @param  uart_tx_handler_t: Pointer handler function if needed.
-  * @param  data: Pointer private data if needed.
+  * @brief  Read data to buffer from register.
+  * @param  dev: pointer to device struct.
+  * @param  gpio: Chip select gpio.
+  * @param  pin: Chip select pin.
+  * @param  reg: Register number to write to.
+  * @param  data: Pointer where the data is stored.
+  * @param  size: Amount of bytes to write.
   *
   * @retval 0 if success.
   */
-int uart_send_data(uart_dev dev, char *buf, uint16_t size,
-	uart_tx_handler_t handler, void *data);
+int spi_read_reg(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
+	uint8_t reg, uint8_t *data, uint16_t size);
 
-/**
-  * @brief  Simply sends the null-terminated string to UART.
-  * @param  dev: Pointer to settings struct.
-  * @param  buf: Pointer to trasmitter buffer.
-  *
-  * @retval 0 0 if success.
-  */
-int uart_send_string(uart_dev dev, char *buf);
+#ifdef FREERTOS
+
+#endif /* FREERTOS */
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __UART_H__ */
+#endif /* __SPI_H__ */
+

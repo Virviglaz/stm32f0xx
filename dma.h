@@ -52,9 +52,15 @@
 #include <stm32f0xx.h>
 #include <stdint.h>
 
+#define DMA_FLAG_DEV2MEM_B	(DMA_CCR_MINC | DMA_CCR_TCIE | DMA_CCR_EN)
+#define DMA_FLAG_MEM2DEV_B	(DMA_CCR_MINC | DMA_CCR_DIR | \
+	DMA_CCR_TCIE | DMA_CCR_EN)
+#define DMA_MEM2MEM_B		(DMA_CCR_MEM2MEM | DMA_CCR_MINC | \
+	DMA_CCR_PINC | DMA_CCR_DIR | DMA_CCR_TCIE | DMA_CCR_EN)
+
 /**
   * @brief  Initialize DMA and find a channel.
-  * @param  channel: Number of channel or first free if 0.
+  * @param  channel: Number of channel.
   * @param  handler: Pointer to function to be called at finish.
   * @param  data: Pointer to data to be provided to handler.
   *
@@ -64,32 +70,70 @@ DMA_Channel_TypeDef *get_dma_ch(uint8_t channel,
 	void (*handler)(void *data), void *data);
 
 /**
-  * @brief  Release DMA channed and disable the interrupt.
-  * @param  ch: Pointer to DMA channel.
+  * @brief  Find a free DMA channel for mem2mem data copy.
+  * @param  found: Pointer where channel number will be stored.
+  * @param  handler: Pointer to function to be called at finish.
+  * @param  data: Pointer to data to be provided to handler.
+  *
+  * @retval 0 if failed, pointer to channel if found.
+  */
+DMA_Channel_TypeDef *find_free_dma_ch(uint8_t *found,
+	void (*handler)(void *data), void *data);
+
+/**
+  * @brief  Release the DMA channel.
+  * @param  ch: DMA channel number.
   *
   * @retval None.
   */
-static inline void dma_release(DMA_Channel_TypeDef *ch)
-{
-	if (ch)
-		ch->CCR = 0;
-}
-
-#ifdef FREERTOS
+void dma_release(uint8_t ch);
 
 /**
-  * @brief  Copy data memory to memory using DMA and RTOS.
+  * @brief  Setup and init DMA transfer.
+  * @param  ch: Pointer to DMA channel allocated before.
+  * @param  mem: Pointer to memory location.
+  * @param  per: Pointer to peripherial location.
+  * @param  size: Amount of bytes to transfer.
+  * @param  flags: DMA flags to setup configuration register.
+  *
+  * @retval None.
+  */
+static inline void dma_setup(DMA_Channel_TypeDef *ch, void *mem, void *per,
+	uint16_t size, uint32_t flags)
+{
+	ch->CNDTR = size;
+	ch->CMAR = (uint32_t)mem;
+	ch->CPAR = (uint32_t)per;
+	ch->CCR = flags;
+}
+
+/**
+  * @brief  Copy data memory to memory using DMA.
   * @param  dst: pointer to the destination array.
   * @param  src: pointer to the source of data to be copied.
   * @param  size: number of bytes to copy.
   *
-  * @retval 0 if failed, pointer to channel if found.
+  * @retval None.
   */
-void memcpy_dma8(uint8_t *dst, const uint8_t *src, uint16_t size);
-void memcpy_dma16(uint16_t *dst, const uint16_t *src, uint16_t size);
-void memcpy_dma32(uint32_t *dst, const uint32_t *src, uint16_t size);
+void memcpy_dma(void *dst, const void *src, uint16_t size, uint16_t flag);
 
-#endif /* FREERTOS */
+static inline void memcpy_dma8(uint8_t *dst, const uint8_t *src,
+	uint16_t size)
+{
+	memcpy_dma(dst, src, size, 0);
+}
+
+static inline void memcpy_dma16(uint16_t *dst, const uint16_t *src,
+	uint16_t size)
+{
+	memcpy_dma(dst, src, size, DMA_CCR_PSIZE_0 | DMA_CCR_MSIZE_0);
+}
+
+static inline void memcpy_dma32(uint32_t *dst, const uint32_t *src,
+	uint16_t size)
+{
+	memcpy_dma(dst, src, size, DMA_CCR_PSIZE_1 | DMA_CCR_MSIZE_1);
+}
 
 #ifdef __cplusplus
 }
