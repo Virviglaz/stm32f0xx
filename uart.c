@@ -90,47 +90,61 @@ struct uart_buf_t {
 /* RAM buffers for UART TX/RX */
 static struct uart_buf_t bufs[6];
 
+static const struct uart_dev_t pins[] = {
+#if defined (STM32F030xC)
+	{ 4, USART4, GPIOA, BIT(0),  BIT(1),  GPIO_AF4, 0, &bufs[3] },
+#endif
+#if defined (STM32F030X4) || defined (STM32F030X6)
+	{ 1, USART1, GPIOA, BIT(2),  BIT(2),  GPIO_AF1, 2, &bufs[0] },
+#endif
+#if defined (STM32F030xC) || defined (STM32F030X8)
+	{ 6, USART6, GPIOA, BIT(2),  BIT(2),  GPIO_AF1, 0, &bufs[5] },
+#endif
+#if defined (STM32F030xC)
+	{ 6, USART6, GPIOA, BIT(4),  BIT(5),  GPIO_AF5, 0, &bufs[5] },
+#endif
+	{ 1, USART1, GPIOA, BIT(9),  BIT(10), GPIO_AF1, 2, &bufs[0] },
+#if defined (STM32F030X4) || defined (STM32F030X6)
+	{ 1, USART1, GPIOA, BIT(14), BIT(15), GPIO_AF1, &bufs[0] },
+#endif
+#if defined (STM32F030xC) || defined (STM32F030X8)
+	{ 2, USART2, GPIOA, BIT(14), BIT(15), GPIO_AF1, 4, &bufs[1] },
+#endif
+#if defined (STM32F030xC)
+	{ 5, USART5, GPIOB, BIT(3),  BIT(4),  GPIO_AF4, 0, &bufs[4] },
+	{ 1, USART1, GPIOB, BIT(6),  BIT(7),  GPIO_AF0, 2, &bufs[0] },
+	{ 3, USART3, GPIOB, BIT(9),  BIT(10), GPIO_AF4, 0, &bufs[2] },
+	{ 6, USART6, GPIOC, BIT(0),  BIT(1),  GPIO_AF2, 0, &bufs[5] },
+	{ 4, USART4, GPIOC, BIT(10), BIT(11), GPIO_AF0, 0, &bufs[3] },
+	{ 3, USART3, GPIOC, BIT(10), BIT(11), GPIO_AF1, 0, &bufs[2] },
+#endif
+};
+
 /*
  * Pinning allocation map. Refer to reference_manual
  */
-const struct uart_dev_t *find_uart_dev(GPIO_TypeDef *gpio, uint16_t pin_mask)
+uart_dev find_uart_dev(GPIO_TypeDef *gpio, uint16_t pin_mask)
 {
-	static const struct uart_dev_t pins[] = {
-#if defined (STM32F030xC)
-		{ 4, USART4, GPIOA, BIT(0),  BIT(1),  GPIO_AF4, 0, &bufs[3] },
-#endif
-#if defined (STM32F030X4) || defined (STM32F030X6)
-		{ 1, USART1, GPIOA, BIT(2),  BIT(2),  GPIO_AF1, 2, &bufs[0] },
-#endif
-#if defined (STM32F030xC) || defined (STM32F030X8)
-		{ 6, USART6, GPIOA, BIT(2),  BIT(2),  GPIO_AF1, 0, &bufs[5] },
-#endif
-#if defined (STM32F030xC)
-		{ 6, USART6, GPIOA, BIT(4),  BIT(5),  GPIO_AF5, 0, &bufs[5] },
-#endif
-		{ 1, USART1, GPIOA, BIT(9),  BIT(10), GPIO_AF1, 2, &bufs[0] },
-#if defined (STM32F030X4) || defined (STM32F030X6)
-		{ 1, USART1, GPIOA, BIT(14), BIT(15), GPIO_AF1, &bufs[0] },
-#endif
-#if defined (STM32F030xC) || defined (STM32F030X8)
-		{ 2, USART2, GPIOA, BIT(14), BIT(15), GPIO_AF1, 4, &bufs[1] },
-#endif
-#if defined (STM32F030xC)
-		{ 5, USART5, GPIOB, BIT(3),  BIT(4),  GPIO_AF4, 0, &bufs[4] },
-		{ 1, USART1, GPIOB, BIT(6),  BIT(7),  GPIO_AF0, 2, &bufs[0] },
-		{ 3, USART3, GPIOB, BIT(9),  BIT(10), GPIO_AF4, 0, &bufs[2] },
-		{ 6, USART6, GPIOC, BIT(0),  BIT(1),  GPIO_AF2, 0, &bufs[5] },
-		{ 4, USART4, GPIOC, BIT(10), BIT(11), GPIO_AF0, 0, &bufs[3] },
-		{ 3, USART3, GPIOC, BIT(10), BIT(11), GPIO_AF1, 0, &bufs[2] },
-#endif
-	};
 	uint8_t i;
 
 	for (i = 0; i != ARRAY_SIZE(pins); i++) {
-		const struct uart_dev_t *p = &pins[i];
+		uart_dev p = &pins[i];
 		if (p->gpio == gpio)
 			if (p->tx_pin & pin_mask || p->rx_pin & pin_mask)
 				return p;
+	}
+
+	return 0;
+}
+
+uart_dev get_uart_dev(uint8_t num)
+{
+	uint8_t i;
+
+	for (i = 0; i != ARRAY_SIZE(pins); i++) {
+		uart_dev p = &pins[i];
+		if (p->index == num)
+			return p;
 	}
 
 	return 0;
@@ -195,7 +209,7 @@ static inline int enable_isr(uint8_t uart_num)
 	return 0;
 }
 
-int uart_init(const struct uart_dev_t *dev, uint32_t freq)
+int uart_init(uart_dev dev, uint32_t freq)
 {
 	USART_TypeDef *uart = dev->uart;
 	uint32_t clock_source = clock_enable(uart);
@@ -215,21 +229,27 @@ int uart_init(const struct uart_dev_t *dev, uint32_t freq)
 	return enable_isr(dev->index - 1);
 }
 
-int uart_enable_rx(const struct uart_dev_t *dev, char *buf, uint16_t size,
+void uart_enable_rx(uart_dev dev, char *buf, uint16_t size,
 	uart_rx_handler_t handler, void *data)
 {
 	USART_TypeDef *uart = dev->uart;
 	struct uart_buf_t *b = dev->buffers;
 
 	b->rx.buf = buf;
-	b->rx.size = size;
+	b->rx.size = size - 1;
 	b->rx.cnt = 0;
 	b->rx.handler = handler;
 	b->rx.data = data;
 	b->rx.error = 0;
 
-	uart->CR1 |= USART_CR1_RE | USART_CR1_RXNEIE;
-	return 0;
+	BIT_SET(uart->CR1, USART_CR1_RE | USART_CR1_RXNEIE);
+}
+
+void uart_disable_rx(uart_dev dev)
+{
+	USART_TypeDef *uart = dev->uart;
+
+	BIT_CLR(uart->CR1, USART_CR1_RE | USART_CR1_RXNEIE);
 }
 
 static void tx_handler(void *data)
@@ -255,7 +275,7 @@ static void tx_send(USART_TypeDef *uart, struct uart_buf_t *b)
 	b->tx.cnt++;
 }
 
-int uart_send_data(const struct uart_dev_t *dev, char *buf, uint16_t size,
+int uart_send_data(uart_dev dev, char *buf, uint16_t size,
 	uart_tx_handler_t handler, void *data)
 {
 	USART_TypeDef *uart = dev->uart;
@@ -290,7 +310,7 @@ int uart_send_data(const struct uart_dev_t *dev, char *buf, uint16_t size,
 	return 0;
 }
 
-int uart_send_string(const struct uart_dev_t *dev, char *buf)
+int uart_send_string(uart_dev dev, char *buf)
 {
 	return uart_send_data(dev, buf, strlen(buf), 0, 0);
 }
@@ -305,6 +325,7 @@ static inline void rx_isr(struct uart_buf_t *b, USART_TypeDef *uart)
 		if (b->rx.handler)
 			b->rx.handler(b->rx.buf, b->rx.size, b->rx.data);
 		b->rx.cnt = 0;
+		return;
 	}
 
 	b->rx.cnt++;

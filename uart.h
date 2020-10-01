@@ -52,9 +52,11 @@
 #include <stdint.h>
 #include "gpio.h"
 
-/* Uart device struct accessible only from source */
+/* uart device struct accessible only from source */
 struct uart_dev_t;
 
+/* uart types redefenition */
+typedef const struct uart_dev_t * uart_dev;
 typedef void (*uart_tx_handler_t)(void *buffer);
 typedef void (*uart_rx_handler_t)(char *buffer, uint16_t size, void *data);
 
@@ -67,7 +69,16 @@ typedef void (*uart_rx_handler_t)(char *buffer, uint16_t size, void *data);
   *
   * @retval 0 if no settings found or a pointer to struct if success.
   */
-const struct uart_dev_t *find_uart_dev(GPIO_TypeDef *gpio, uint16_t pin_mask);
+uart_dev find_uart_dev(GPIO_TypeDef *gpio, uint16_t pin_mask);
+
+/**
+  * @brief  Get uart by number.
+  * @param  num: inxex of UART [1..6] depends of device choosen.
+  * @note   you can use find_uart_dev or get_uart_dev to get a uart settings.
+  *
+  * @retval 0 if no settings found or a pointer to struct if success.
+  */
+uart_dev get_uart_dev(uint8_t num);
 
 /**
   * @brief  Initialize UART.
@@ -76,7 +87,7 @@ const struct uart_dev_t *find_uart_dev(GPIO_TypeDef *gpio, uint16_t pin_mask);
   *
   * @retval 0 if success.
   */
-int uart_init(const struct uart_dev_t *dev, uint32_t freq);
+int uart_init(uart_dev dev, uint32_t freq);
 
 /**
   * @brief  Enable receiving interrupt.
@@ -86,10 +97,18 @@ int uart_init(const struct uart_dev_t *dev, uint32_t freq);
   * @param  uart_rx_handler_t: Pointer handler function if needed.
   * @param  data: Pointer private data if needed.
   *
-  * @retval 0 if success.
+  * @retval none.
   */
-int uart_enable_rx(const struct uart_dev_t *dev, char *buf, uint16_t size,
+void uart_enable_rx(uart_dev dev, char *buf, uint16_t size,
 	uart_rx_handler_t handler, void *data);
+
+/**
+  * @brief  Disable receiving interrupt.
+  * @param  dev: Pointer to settings struct.
+  *
+  * @retval none.
+  */
+void uart_disable_rx(uart_dev dev);
 
 /**
   * @brief  Send data to UART using DMA.
@@ -101,7 +120,7 @@ int uart_enable_rx(const struct uart_dev_t *dev, char *buf, uint16_t size,
   *
   * @retval 0 if success.
   */
-int uart_send_data(const struct uart_dev_t *dev, char *buf, uint16_t size,
+int uart_send_data(uart_dev dev, char *buf, uint16_t size,
 	uart_tx_handler_t handler, void *data);
 
 /**
@@ -111,7 +130,7 @@ int uart_send_data(const struct uart_dev_t *dev, char *buf, uint16_t size,
   *
   * @retval 0 0 if success.
   */
-int uart_send_string(const struct uart_dev_t *dev, char *buf);
+int uart_send_string(uart_dev dev, char *buf);
 
 #ifdef __cplusplus
 }
