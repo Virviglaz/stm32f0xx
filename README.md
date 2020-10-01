@@ -46,6 +46,22 @@ uart_enable_rx(uart, rx_buf, sizeof(rx_buf),
 /* send data using dma or interrupt depends of dma availability */
 uart_send_string(uart, "Hallo world!\r\n");
 ```
+## SPI example
+If DMA is available, transfer will be done using DMA. Otherwise interrupt will be used.
+```c
+/* use SPI1 */
+spi_dev spi = get_spi_dev(1);
+
+/* init SPI1 with 10MHz and idle clock mode */
+err = spi_init(spi, 10000000, false);
+
+/* send 16 bytes to 0xEE register of some chip connected to PA4 */
+spi_write_reg(spi, PA4, 0xEE, (void *)rx_buf, 16);
+
+/* receive 16 bytes from 0xEE register of some chip connected to PA4 */
+spi_read_reg(spi, PA4, 0xEE, (void *)rx_buf, 16);
+```
+
 ## DELAYS
 Simply use, do not init anything.
 ```c
