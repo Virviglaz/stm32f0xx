@@ -31,7 +31,7 @@ static void uart_rx_handler(char *buffer, uint16_t size, void *data)
 }
 
 /* find uart connected to GPIOB, pin 6 (can be tx or rx pin) */
-uart = find_uart_dev(GPIOB, BIT(6));
+uart = find_uart_dev(PB6);;
 or
 /* use UART1 insted if you know where it is connected to */
 uart = get_uart_dev(1);
