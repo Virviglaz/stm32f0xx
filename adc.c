@@ -142,6 +142,14 @@ double adc_read_vref(void)
 	return 3.3 * (double)(*cal) / (double)v;
 }
 
+/*
+ * CPU FREQ	   EXECUTION TIME
+ * 8MHz			644uS
+ * 12MHz		429uS
+ * 16MHz		322uS
+ * 24MHz		214uS
+ * 32MHz		160uS
+*/
 double adc_read_temp(void)
 {
 	static const struct adc_dev_t sensor = { 16, 0, 0 };
@@ -158,6 +166,14 @@ double adc_read_temp(void)
 		((v - *ts1) * (110.0 - 30.0) / (*ts2 - *ts1) + 30.0) / 3.3; 
 }
 
+/*
+ * CPU FREQ	   EXECUTION TIME
+ * 8MHz			510uS
+ * 12MHz		342uS
+ * 16MHz		255uS
+ * 24MHz		170uS
+ * 32MHz		128uS
+*/
 double adc_read_voltage(adc_dev dev)
 {
 	return adc_read_vref() * adc_read(dev, ADC_SMPR1_SMPR) / 4095.0;
