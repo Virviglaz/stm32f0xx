@@ -133,8 +133,7 @@ void gpio_digital_input_init(GPIO_TypeDef *gpio, uint16_t pinmask,
 		}
 }
 
-void gpio_analog_input_init(GPIO_TypeDef *gpio, uint16_t pinmask,
-	enum gpio_pull_t pull)
+void gpio_analog_input_init(GPIO_TypeDef *gpio, uint16_t pinmask)
 {
 	uint8_t i;
 
@@ -143,7 +142,7 @@ void gpio_analog_input_init(GPIO_TypeDef *gpio, uint16_t pinmask,
 	for (i = 0; i != 16; i++)
 		if (pinmask & BIT(i)) {
 			gpio_set_mode(gpio, i, GPIO_ANALOG);
-			gpio_set_pull(gpio, i, pull);
+			gpio_set_pull(gpio, i, GPIO_NO_PULL);
 		}
 }
 

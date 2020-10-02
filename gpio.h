@@ -229,8 +229,7 @@ void gpio_output_init(GPIO_TypeDef *gpio, uint16_t pinmask, enum gpio_out_t out,
 void gpio_digital_input_init(GPIO_TypeDef *gpio, uint16_t pinmask,
 	enum gpio_pull_t pull);
 
-void gpio_analog_input_init(GPIO_TypeDef *gpio, uint16_t pinmask,
-	enum gpio_pull_t pull);
+void gpio_analog_input_init(GPIO_TypeDef *gpio, uint16_t pinmask);
 
 void gpio_alt_func_init(GPIO_TypeDef *gpio, uint16_t pinmask,
 	enum gpio_alt_t alt);

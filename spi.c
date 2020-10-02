@@ -118,10 +118,10 @@ static void start_message_dma(struct spi_xfer_t *xfer)
 
 	xfer->dma.tx->CCR = 0;
 	xfer->dma.rx->CCR = 0;
+	BIT_CLR(spi->CR1, SPI_CR1_SPE);
 
 	if (m) {
 		static uint8_t dummy = 0;
-		BIT_CLR(spi->CR1, SPI_CR1_SPE);
 		spi->CR2 = (7 << 8) | \
 			SPI_CR2_FRXTH | SPI_CR2_RXDMAEN | SPI_CR2_TXDMAEN;
 
@@ -132,7 +132,8 @@ static void start_message_dma(struct spi_xfer_t *xfer)
 		else		/* DMA1 DUMMY2DEV */
 			dma_setup(xfer->dma.tx, (void *)&dummy,
 				(void *)&spi->DR, m->size,
-					DMA_CCR_TCIE | DMA_CCR_DIR | DMA_CCR_EN);
+					DMA_CCR_TCIE | DMA_CCR_DIR | \
+						DMA_CCR_EN);
 
 		if (m->rx)	/* DMA DEV2MEM */
 			dma_setup(xfer->dma.rx, (void *)m->rx, (void *)&spi->DR,
@@ -148,7 +149,6 @@ static void start_message_dma(struct spi_xfer_t *xfer)
 		gpio_set(xfer->cs.gpio, xfer->cs.pin);
 		dma_release(xfer->dev->tx_dma_ch);
 		dma_release(xfer->dev->rx_dma_ch);
-		BIT_CLR(spi->CR1, SPI_CR1_SPE);
 		xfer->done = true;
 	}
 }
