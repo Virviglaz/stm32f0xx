@@ -58,20 +58,67 @@ static struct isr_t {
 	void *data;
 } tim_isr[NOF_TIMERS] = { 0 };
 
+struct pwm_t {
+	gp_t *pwm_ch[4];
+};
+
+static const gp_t tim1ch1 = { PA8,  GPIO_AF2 };
+static const gp_t tim1ch2 = { PA9,  GPIO_AF2 };
+static const gp_t tim1ch3 = { PA10, GPIO_AF2 };
+static const gp_t tim1ch4 = { PA11, GPIO_AF2 };
+static const struct pwm_t tim1_pwm = { &tim1ch1, &tim1ch2, &tim1ch3, &tim1ch4 };
+
+static const gp_t tim3ch1 = { PB4,  GPIO_AF1 };
+static const gp_t tim3ch2 = { PB5,  GPIO_AF1 };
+static const gp_t tim3ch3 = { PB0,  GPIO_AF1 };
+static const gp_t tim3ch4 = { PB1,  GPIO_AF1 };
+static const struct pwm_t tim3_pwm = { &tim3ch1, &tim3ch2, &tim3ch3, &tim3ch4 };
+
+#ifdef TIM14PWM1_REMAP
+static const gp_t tim14ch1 = { PA4,  GPIO_AF4 };
+#else
+static const gp_t tim14ch1 = { PB1,  GPIO_AF0 };
+#endif
+static const struct pwm_t tim14_pwm = { &tim14ch1, 0 };
+
+#if defined (STM32F030xC) || defined (STM32F030X8)
+static const gp_t tim15ch1 = { PB14, GPIO_AF0 };
+static const struct pwm_t tim15_pwm = { &tim15ch1, 0 };
+#endif
+
+#ifdef TIM16PWM1_REMAP
+static const gp_t tim16ch1 = { PA6,  GPIO_AF5 };
+#else
+static const gp_t tim16ch1 = { PB8,  GPIO_AF2 };
+#endif
+static const struct pwm_t tim16_pwm = { &tim16ch1, 0 };
+
+#ifdef TIM17PWM1_REMAP
+static const gp_t tim17ch1 = { PA7,  GPIO_AF5 };
+#else
+static const gp_t tim17ch1 = { PB9,  GPIO_AF2 };
+#endif
+static const struct pwm_t tim17_pwm = { &tim17ch1, 0 };
+
 static const struct tim_dev_t {
 	uint8_t index;			/* index of timer */
 	TIM_TypeDef *tim;		/* pointer to tim base address */
 	struct isr_t *isr;		/* pointer to isr parameters */
+	const struct pwm_t *pwm;		/* pointer to PWM out channels */
 	enum IRQn irq;			/* irq number */
 } params[] = {
-	{ 1,  TIM1,  &tim_isr[0], TIM1_BRK_UP_TRG_COM_IRQn },
-	{ 3,  TIM3,  &tim_isr[1], TIM3_IRQn },
-	{ 6,  TIM6,  &tim_isr[2], TIM6_IRQn },
-	{ 7,  TIM7,  &tim_isr[3], TIM7_IRQn },
-	{ 14, TIM14, &tim_isr[4], TIM14_IRQn },
-	{ 15, TIM15, &tim_isr[5], TIM15_IRQn },
-	{ 16, TIM16, &tim_isr[6], TIM16_IRQn },
-	{ 17, TIM17, &tim_isr[7], TIM17_IRQn },
+	{ 1,  TIM1,  &tim_isr[0], &tim1_pwm, 	TIM1_BRK_UP_TRG_COM_IRQn },
+	{ 3,  TIM3,  &tim_isr[1], &tim3_pwm,	TIM3_IRQn },
+	{ 6,  TIM6,  &tim_isr[2], 0,		TIM6_IRQn },
+	{ 7,  TIM7,  &tim_isr[3], 0,		TIM7_IRQn },
+	{ 14, TIM14, &tim_isr[4], &tim14_pwm,	TIM14_IRQn },
+#if defined (STM32F030xC) || defined (STM32F030X8)
+	{ 15, TIM15, &tim_isr[5], &tim15_pwm,	TIM15_IRQn },
+#else
+	{ 15, TIM15, &tim_isr[5], 0,		TIM15_IRQn },
+#endif
+	{ 16, TIM16, &tim_isr[6], &tim16_pwm,	TIM16_IRQn },
+	{ 17, TIM17, &tim_isr[7], &tim17_pwm,	TIM17_IRQn },
 };
 
 static uint32_t get_tim_clock(uint8_t tim)
@@ -189,6 +236,74 @@ void tim_set_value(tim_dev dev, uint32_t value)
 {
 	dev->tim->CNT = value;
 	dev->tim->EGR = TIM_EGR_UG;
+}
+
+int tim_pwm_enable(tim_dev dev, uint8_t ch_num, uint16_t duty)
+{
+	const gp_t *pin;
+	TIM_TypeDef *tim = dev->tim;
+
+	ch_num--; /* [1..4] -> [0..3] */
+	if (!dev->pwm || ch_num > 3)
+		return -EINVAL;
+
+	pin = dev->pwm->pwm_ch[ch_num];
+	if (!pin)
+		return -EINVAL;
+
+	gpio_alt_func_init(pin->gpio, pin->pinmask, pin->alt_func);
+
+	switch (ch_num) {
+	case 0:
+		tim->CCMR1 = (7 << 4) | TIM_CCMR1_OC1PE;
+		tim->CCER = TIM_CCER_CC1E | TIM_CCER_CC1P;
+		tim->CCR1 = duty;
+		break;
+	case 1:
+		tim->CCMR1 = (7 << 4) | TIM_CCMR1_OC2PE;
+		tim->CCER = TIM_CCER_CC2E | TIM_CCER_CC2P;
+		tim->CCR2 = duty;
+		break;
+	case 2:
+		tim->CCMR2 = (7 << 4) | TIM_CCMR2_OC3PE;
+		tim->CCER = TIM_CCER_CC3E | TIM_CCER_CC3P;
+		tim->CCR3 = duty;
+		break;
+	case 3:
+		tim->CCMR2 = (7 << 4) | TIM_CCMR2_OC4PE;
+		tim->CCER = TIM_CCER_CC4E | TIM_CCER_CC4P;
+		tim->CCR4 = duty;
+		break;
+	}
+
+	tim->RCR = 0;
+	tim->BDTR = TIM_BDTR_MOE;
+
+	return 0;
+}
+
+int tim_pwm_set_duty(tim_dev dev, uint8_t ch_num, uint16_t duty)
+{
+	TIM_TypeDef *tim = dev->tim;
+
+	switch (ch_num) {
+	case 1:
+		tim->CCR1 = duty;
+		break;
+	case 2:
+		tim->CCR2 = duty;
+		break;
+	case 3:
+		tim->CCR3 = duty;
+		break;
+	case 4:
+		tim->CCR4 = duty;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
 }
 
 static void isr(uint8_t tim_num)

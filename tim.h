@@ -126,6 +126,26 @@ uint32_t tim_get_value(tim_dev dev);
   */
 void tim_set_value(tim_dev dev, uint32_t value);
 
+/**
+  * @brief  Enable PWM output.
+  * @param  dev: Pointer to timer device.
+  * @param  ch_num: channel number [1..4].
+  * @param  duty: duty cycle [0..period].
+  *
+  * @retval 0 if success, EINVAL if no channel found for this timer.
+  */
+int tim_pwm_enable(tim_dev dev, uint8_t ch_num, uint16_t duty);
+
+/**
+  * @brief  Set the PWM duty cycle.
+  * @param  dev: Pointer to timer device.
+  * @param  ch_num: channel number [1..4].
+  * @param  duty: duty cycle [0..period].
+  *
+  * @retval 0 if success.
+  */
+int tim_pwm_set_duty(tim_dev dev, uint8_t ch_num, uint16_t duty);
+
 #ifdef __cplusplus
 }
 #endif

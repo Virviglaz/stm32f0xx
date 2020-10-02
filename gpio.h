@@ -190,6 +190,12 @@ enum gpio_alt_t {
 	GPIO_AF7		= 7,
 };
 
+typedef const struct {
+	GPIO_TypeDef *gpio;
+	uint16_t pinmask;
+	enum gpio_alt_t alt_func;
+} gp_t;
+
 static inline uint16_t gpio_read(GPIO_TypeDef *gpio, uint16_t pin_mask)
 {
 	return gpio->IDR & pin_mask;
