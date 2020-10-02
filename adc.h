@@ -95,6 +95,13 @@ double adc_read_vref(void);
   */
 double adc_read_temp(void);
 
+/**
+  * @brief  Read real voltage from analog input.
+  *
+  * @retval voltage in [V].
+  */
+double adc_read_voltage(adc_dev dev);
+
 #ifdef __cplusplus
 }
 #endif

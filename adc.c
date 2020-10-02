@@ -157,3 +157,8 @@ double adc_read_temp(void)
 	return adc_read_vref() * \
 		((v - *ts1) * (110.0 - 30.0) / (*ts2 - *ts1) + 30.0) / 3.3; 
 }
+
+double adc_read_voltage(adc_dev dev)
+{
+	return adc_read_vref() * adc_read(dev, ADC_SMPR1_SMPR) / 4095.0;
+}
