@@ -42,8 +42,8 @@
  * Pavel Nadein <pavelnadein@gmail.com>
  */
 
-#ifndef __ADC_H__
-#define __ADC_H__
+#ifndef __TIM_H__
+#define __TIM_H__
 
 #ifdef __cplusplus
  extern "C" {
@@ -52,58 +52,82 @@
 #include <stm32f0xx.h>
 #include <stdint.h>
 
-/* spi types redefenition */
-typedef const struct adc_dev_t * adc_dev;
+/* tim types redefenition */
+typedef const struct tim_dev_t * tim_dev;
 
 /**
-  * @brief  Get adc channel by gpio/pin.
-  * @param  gpio: gpio base where channel is connected.
-  * @param  pin: pin_number where channel is connected.
+  * @brief  Initialize the timer and return pointer to device.
+  * @param  tim: Number of timer.
+  * @param  freq: Timer frequency in MHz (0 if period is used).
+  * @param  sec: Timer period in sec.
   *
-  * @retval 0 if no settings found or a pointer to struct if success.
+  * @retval Pointer to device or 0 if failed.
   */
-adc_dev find_adc_dev(GPIO_TypeDef *gpio, uint8_t pin);
+tim_dev get_tim_dev(uint8_t tim, uint32_t freq, uint32_t period);
 
 /**
-  * @brief  Get adc channel by index.
-  * @param  num: inxex of ADC channel [0..16].
+  * @brief  Set timer prescaller and period value.
+  * @param  dev: Pointer to timer device.
+  * @param  prc: prescaller value.
+  * @param  period: period value.
   *
-  * @retval 0 if no settings found or a pointer to struct if success.
+  * @retval None.
   */
-adc_dev get_adc_dev(uint8_t num);
+void tim_set_timebase(tim_dev dev, uint32_t prc, uint32_t period);
 
 /**
-  * @brief  Convert and read the analog value.
-  * @param  dev: adc channel device.
-  * @param  sample_rate: desired sample rate [0..7].
+  * @brief  Install and enable the timer interrupt.
+  * @param  dev: Pointer to timer device.
+  * @param  handler: pointer to handler function.
+  * @param  data: private data for generic use.
   *
-  * @retval 0 if no settings found or a pointer to struct if success.
+  * @retval None.
   */
-uint16_t adc_read(adc_dev dev, uint8_t sample_rate);
+void tim_enable_interrupt(tim_dev dev, void (*handler)(void *data), void *data);
 
 /**
-  * @brief  Read reference voltage.
+  * @brief  Disable the timer interrupt.
+  * @param  dev: Pointer to timer device.
   *
-  * @retval voltage in [V].
+  * @retval None.
   */
-double adc_read_vref(void);
+void tim_disable_interrupt(tim_dev dev);
 
 /**
-  * @brief  Read internal temperature value in Celcius.
+  * @brief  Start the timer.
+  * @param  dev: Pointer to timer device.
   *
-  * @retval internal sensor temperature value.
+  * @retval None.
   */
-double adc_read_temp(void);
+void tim_start(tim_dev dev);
 
 /**
-  * @brief  Read real voltage from analog input.
+  * @brief  Stop the timer.
+  * @param  dev: Pointer to timer device.
   *
-  * @retval voltage in [V].
+  * @retval None.
   */
-double adc_read_voltage(adc_dev dev);
+void tim_stop(tim_dev dev);
+
+/**
+  * @brief  Get timer counter value.
+  * @param  dev: Pointer to timer device.
+  *
+  * @retval counter value.
+  */
+uint32_t tim_get_value(tim_dev dev);
+
+/**
+  * @brief  Set timer counter value.
+  * @param  dev: Pointer to timer device.
+  * @param  value: new counter value.
+  *
+  * @retval None.
+  */
+void tim_set_value(tim_dev dev, uint32_t value);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __ADC_H__ */
+#endif /* __TIM_H__ */

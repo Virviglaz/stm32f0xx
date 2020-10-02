@@ -210,6 +210,11 @@ static inline void gpio_clr(GPIO_TypeDef *gpio, uint16_t pin_mask)
 	gpio->BRR = pin_mask;
 }
 
+static inline void gpio_inv(GPIO_TypeDef *gpio, uint16_t pin_mask)
+{
+	gpio->ODR = gpio->ODR ^ pin_mask;
+}
+
 void gpio_set_output(GPIO_TypeDef *gpio, uint8_t pin_num, enum gpio_out_t push);
 
 void gpio_set_speed(GPIO_TypeDef *gpio, uint8_t pin_num,

@@ -163,7 +163,7 @@ double adc_read_temp(void)
 	ADC->CCR = 0;
 
 	return adc_read_vref() * \
-		((v - *ts1) * (110.0 - 30.0) / (*ts2 - *ts1) + 30.0) / 3.3; 
+		((v - *ts1) * (110.0 - 30.0) / (*ts2 - *ts1) + 30.0) / 3.3;
 }
 
 /*
