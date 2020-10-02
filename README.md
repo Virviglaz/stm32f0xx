@@ -100,3 +100,17 @@ static void tim_isr(void *data)
 /* enable timer interrupt */
 tim_enable_interrupt(tim7, tim_isr, 0);
 ```
+## PWM example
+```c
+/* use timer 14 with 2500kHz frequency */
+tim_dev tim14 = get_tim_dev(14, 2500, 0);
+
+/* set manually the timebase (prescaller and period) */
+tim_set_timebase(tim14, 1000, 1500);
+
+/* enalbe PWM output at PB1 or if defined TIM14PWM1_REMAP at PA4 */
+tim_pwm_enable(tim14, 1, 1000);
+
+/* change the duty cycle */
+tim_pwm_set_duty(tim14, 1, 200);
+```
