@@ -71,3 +71,17 @@ delay_ms(250);
 /* wait for 250us */
 delay_us(250);
 ```
+## ADC example
+```c
+/* channel0 will be used */
+adc_dev adc_ch0 = get_adc_dev(0);
+
+/* convert and read the value */
+adc_res = adc_read(adc_ch0, 7);
+
+/* read internal temperature value */
+double t = adc_read_temp();
+
+/* read vref value */
+double v = adc_read_vref();
+```
