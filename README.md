@@ -85,3 +85,18 @@ double t = adc_read_temp();
 /* read vref value */
 double v = adc_read_vref();
 ```
+## Timer example
+```c
+/* get handler and initialize timer 7 for 2.5kHz */
+tim_dev tim7 = get_tim_dev(7, 2500, 0);
+
+/* this code will be run by the interrupt */
+static void tim_isr(void *data)
+{
+	/* invert pin state (LED flash) */
+	gpio_inv(PA4);
+}
+
+/* enable timer interrupt */
+tim_enable_interrupt(tim7, tim_isr, 0);
+```
