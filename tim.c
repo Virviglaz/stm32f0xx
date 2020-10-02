@@ -48,7 +48,7 @@
 #include <errno.h>
 
 #if defined (STM32F030xC)
-#define NOF_TIMERS		7
+#define NOF_TIMERS		8
 #else
 #error "No timer driver available for this mcu."
 #endif /* TODO: add support for other mcus */
@@ -67,10 +67,11 @@ static const struct tim_dev_t {
 	{ 1,  TIM1,  &tim_isr[0], TIM1_BRK_UP_TRG_COM_IRQn },
 	{ 3,  TIM3,  &tim_isr[1], TIM3_IRQn },
 	{ 6,  TIM6,  &tim_isr[2], TIM6_IRQn },
-	{ 14, TIM14, &tim_isr[3], TIM14_IRQn },
-	{ 15, TIM15, &tim_isr[4], TIM15_IRQn },
-	{ 16, TIM16, &tim_isr[5], TIM16_IRQn },
-	{ 17, TIM17, &tim_isr[6], TIM17_IRQn },
+	{ 7,  TIM7,  &tim_isr[3], TIM7_IRQn },
+	{ 14, TIM14, &tim_isr[4], TIM14_IRQn },
+	{ 15, TIM15, &tim_isr[5], TIM15_IRQn },
+	{ 16, TIM16, &tim_isr[6], TIM16_IRQn },
+	{ 17, TIM17, &tim_isr[7], TIM17_IRQn },
 };
 
 static uint32_t get_tim_clock(uint8_t tim)
@@ -86,6 +87,9 @@ static uint32_t get_tim_clock(uint8_t tim)
 		return clocks->apb1_freq;
 	case 6:
 		BIT_SET(RCC->APB1ENR, RCC_APB1ENR_TIM6EN);
+		return clocks->apb1_freq;
+	case 7:
+		BIT_SET(RCC->APB1ENR, RCC_APB1ENR_TIM7EN);
 		return clocks->apb1_freq;
 	case 14:
 		BIT_SET(RCC->APB1ENR, RCC_APB1ENR_TIM14EN);
@@ -195,7 +199,7 @@ static void isr(uint8_t tim_num)
 
 void TIM1_BRK_UP_TRG_COM_IRQHandler(void)
 {
-	isr(0);
+	isr(0); /* increment index by 1 */
 	TIM1->SR = 0;
 }
 
@@ -211,26 +215,32 @@ void TIM6_IRQHandler(void)
 	TIM6->SR = 0;
 }
 
-void TIM14_IRQHandler(void)
+void TIM7_IRQHandler(void)
 {
 	isr(3);
+	TIM7->SR = 0;
+}
+
+void TIM14_IRQHandler(void)
+{
+	isr(4);
 	TIM14->SR = 0;
 }
 
 void TIM15_IRQHandler(void)
 {
-	isr(4);
+	isr(5);
 	TIM15->SR = 0;
 }
 
 void TIM16_IRQHandler(void)
 {
-	isr(5);
+	isr(6);
 	TIM16->SR = 0;
 }
 
 void TIM17_IRQHandler(void)
 {
-	isr(6);
+	isr(7);
 	TIM17->SR = 0;
 }
