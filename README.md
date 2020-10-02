@@ -114,3 +114,8 @@ tim_pwm_enable(tim14, 1, 1000);
 /* change the duty cycle */
 tim_pwm_set_duty(tim14, 1, 200);
 ```
+## CRC example
+```c
+/* calculate CRC32 of whole mcu flash memory */
+uint32 crc32 = crc((void *)0x8000000, 0x40000 / 4, sizeof(uint32_t));
+```
