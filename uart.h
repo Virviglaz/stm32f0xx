@@ -66,28 +66,21 @@ typedef void (*uart_rx_handler_t)(char *buffer, uint16_t size, void *data);
   * know the where it is used. You should provide a gpio and any of tx/rx pins.
   * @param  gpio: GPIO where one of the tx/rx pins are connected to.
   * @param  pin_mask: pinmask of tx or rx pin.
+  * @param  freq: uart frequency.
   *
   * @retval 0 if no settings found or a pointer to the device if success.
   */
-uart_dev find_uart_dev(GPIO_TypeDef *gpio, uint16_t pin_mask);
+uart_dev find_uart_dev(GPIO_TypeDef *gpio, uint16_t pin_mask, uint32_t freq);
 
 /**
-  * @brief  Get uart by index.
+  * @brief  Get uart by index and initialize it.
   * @param  num: inxex of UART [1..6] depends of device choosen.
+  * @param  freq: uart frequency.
   * @note   you can use find_uart_dev or get_uart_dev to get a uart settings.
   *
   * @retval 0 if no settings found or a pointer to the device if success.
   */
-uart_dev get_uart_dev(uint8_t num);
-
-/**
-  * @brief  Initialize UART.
-  * @param  dev: Pointer to settings struct.
-  * @param  freq: uart frequency.
-  *
-  * @retval 0 if success.
-  */
-int uart_init(uart_dev dev, uint32_t freq);
+uart_dev get_uart_dev(uint8_t num, uint32_t freq);
 
 /**
   * @brief  Enable receiving interrupt.

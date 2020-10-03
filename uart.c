@@ -121,36 +121,6 @@ static const struct uart_dev_t {
 #endif
 };
 
-/*
- * Pinning allocation map. Refer to reference_manual
- */
-uart_dev find_uart_dev(GPIO_TypeDef *gpio, uint16_t pin_mask)
-{
-	uint8_t i;
-
-	for (i = 0; i != ARRAY_SIZE(devices); i++) {
-		uart_dev dev = &devices[i];
-		if (dev->gpio == gpio)
-			if (dev->tx_pin & pin_mask || dev->rx_pin & pin_mask)
-				return dev;
-	}
-
-	return 0;
-}
-
-uart_dev get_uart_dev(uint8_t num)
-{
-	uint8_t i;
-
-	for (i = 0; i != ARRAY_SIZE(devices); i++) {
-		uart_dev dev = &devices[i];
-		if (dev->index == num)
-			return dev;
-	}
-
-	return 0;
-}
-
 static uint32_t clock_enable(USART_TypeDef *uart)
 {
 	struct system_clock_t *clocks = get_clocks();
@@ -210,7 +180,7 @@ static inline int enable_isr(uint8_t uart_num)
 	return 0;
 }
 
-int uart_init(uart_dev dev, uint32_t freq)
+static int uart_init(uart_dev dev, uint32_t freq)
 {
 	USART_TypeDef *uart = dev->uart;
 	uint32_t clock_source = clock_enable(uart);
@@ -228,6 +198,33 @@ int uart_init(uart_dev dev, uint32_t freq)
 	uart->CR3 = 0;
 
 	return enable_isr(dev->index - 1);
+}
+
+uart_dev find_uart_dev(GPIO_TypeDef *gpio, uint16_t pin_mask, uint32_t freq)
+{
+	uint8_t i;
+
+	for (i = 0; i != ARRAY_SIZE(devices); i++) {
+		uart_dev dev = &devices[i];
+		if (dev->gpio == gpio)
+			if (dev->tx_pin & pin_mask || dev->rx_pin & pin_mask)
+				return uart_init(dev, freq) ? 0 : dev;
+	}
+
+	return 0; /* no devices found */
+}
+
+uart_dev get_uart_dev(uint8_t num, uint32_t freq)
+{
+	uint8_t i;
+
+	for (i = 0; i != ARRAY_SIZE(devices); i++) {
+		uart_dev dev = &devices[i];
+		if (dev->index == num)
+			return uart_init(dev, freq) ? 0 : dev;
+	}
+
+	return 0; /* no devices found */
 }
 
 void uart_enable_rx(uart_dev dev, char *buf, uint16_t size,

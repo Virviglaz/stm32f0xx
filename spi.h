@@ -62,29 +62,24 @@ typedef const struct spi_dev_t * spi_dev;
   * knows the where it is used. You should provide a gpio and any of used pins.
   * @param  gpio: GPIO where one of the MSCK/MISO/MOSI pins are connected to.
   * @param  pin_mask: pinmask of tx or rx pin.
+  * @param  freq: Clock frequency in Hz.
+  * @param  clock_high: idle clock mode false = low, true = high.
   *
   * @retval 0 if no settings found or a pointer to struct if success.
   */
-spi_dev find_spi_dev(GPIO_TypeDef *gpio, uint16_t pin_mask);
+spi_dev find_spi_dev(GPIO_TypeDef *gpio, uint16_t pin_mask, uint32_t freq,
+	bool idle_clock_high);
 
 /**
   * @brief  Get spi by index.
   * @param  num: inxex of SPI [1 or 2] depends of device choosen.
+  * @param  freq: Clock frequency in Hz.
+  * @param  clock_high: idle clock mode false = low, true = high.
   * @note   you can use find_spi_dev or get_spi_dev to get a spi device pointer.
   *
   * @retval 0 if no settings found or a pointer to the device if success.
   */
-spi_dev get_spi_dev(uint8_t num);
-
-/**
-  * @brief  Initialize SPI master.
-  * @param  dev: pointer to device struct.
-  * @param  freq: Clock frequency in Hz.
-  * @param  clock_high: idle clock mode false = low, true = high.
-  *
-  * @retval 0 if no settings found or a pointer to the device if success.
-  */
-int spi_init(spi_dev dev, uint32_t freq, bool idle_clock_high);
+spi_dev get_spi_dev(uint8_t num, uint32_t freq, bool idle_clock_high);
 
 /**
   * @brief  Write data from buffer to register.

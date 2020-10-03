@@ -272,7 +272,7 @@ static int send_message(
 	return transfer(dev, msgs, gpio, pin, handler, data);
 }
 
-static void spi_tx_isr(struct xfer_t *xfer)
+static void tx_isr(struct xfer_t *xfer)
 {
 	struct msg_t *m = xfer->msg;
 	SPI_TypeDef *spi = xfer->dev->spi;
@@ -289,7 +289,7 @@ static void spi_tx_isr(struct xfer_t *xfer)
 		*(__IO uint8_t *)&spi->DR = 0; /* send dummy byte */
 }
 
-static void spi_rx_isr(struct xfer_t *xfer)
+static void rx_isr(struct xfer_t *xfer)
 {
 	struct msg_t *m = xfer->msg;
 	SPI_TypeDef *spi = xfer->dev->spi;
@@ -313,37 +313,7 @@ static void spi_rx_isr(struct xfer_t *xfer)
 	}
 }
 
-/*
- * Pinning allocation map. Refer to reference_manual
- */
-spi_dev find_spi_dev(GPIO_TypeDef *gpio, uint16_t pin_mask)
-{
-	uint8_t i;
-
-	for (i = 0; i != ARRAY_SIZE(devices); i++) {
-		spi_dev dev = &devices[i];
-		if (dev->gpio == gpio && (dev->msck & pin_mask || \
-			dev->miso & pin_mask || dev->mosi & pin_mask))
-				return dev;
-	}
-
-	return 0;
-}
-
-spi_dev get_spi_dev(uint8_t num)
-{
-	uint8_t i;
-
-	for (i = 0; i != ARRAY_SIZE(devices); i++) {
-		spi_dev dev = &devices[i];
-		if (dev->index == num)
-			return dev;
-	}
-
-	return 0;
-}
-
-int spi_init(spi_dev dev, uint32_t freq, bool idle_clock_high)
+static int init(spi_dev dev, uint32_t freq, bool idle_clock_high)
 {
 	struct system_clock_t *clocks = get_clocks();
 	uint32_t clock_source;
@@ -379,6 +349,35 @@ int spi_init(spi_dev dev, uint32_t freq, bool idle_clock_high)
 	return 0;
 }
 
+spi_dev find_spi_dev(GPIO_TypeDef *gpio, uint16_t pin_mask, uint32_t freq,
+	bool idle_clock_high)
+{
+	uint8_t i;
+
+	for (i = 0; i != ARRAY_SIZE(devices); i++) {
+		spi_dev dev = &devices[i];
+		if (dev->gpio == gpio && (dev->msck & pin_mask || \
+			dev->miso & pin_mask || dev->mosi & pin_mask))
+			return init(dev, freq, idle_clock_high) ? 0 : dev;
+	}
+
+	return 0; /* no devices found */
+}
+
+spi_dev get_spi_dev(uint8_t num, uint32_t freq, bool idle_clock_high)
+{
+	uint8_t i;
+
+	for (i = 0; i != ARRAY_SIZE(devices); i++) {
+		spi_dev dev = &devices[i];
+		if (dev->index == num)
+			return init(dev, freq, idle_clock_high) ? 0 : dev;
+
+	}
+
+	return 0; /* no devices found */
+}
+
 int spi_write_reg(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
 	uint8_t reg, uint8_t *data, uint16_t size)
 {
@@ -399,10 +398,10 @@ void SPI1_IRQHandler(void)
 	uint16_t status = SPI1->SR;
 
 	if (status & SPI_SR_TXE)
-		spi_tx_isr(xfer);
+		tx_isr(xfer);
 
 	if (status & SPI_SR_RXNE)
-		spi_rx_isr(xfer);
+		rx_isr(xfer);
 }
 
 void SPI2_IRQHandler(void)
@@ -411,8 +410,8 @@ void SPI2_IRQHandler(void)
 	uint16_t status = SPI2->SR;
 
 	if (status & SPI_SR_TXE)
-		spi_tx_isr(xfer);
+		tx_isr(xfer);
 
 	if (status & SPI_SR_RXNE)
-		spi_rx_isr(xfer);
+		rx_isr(xfer);
 }
