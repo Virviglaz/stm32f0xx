@@ -59,7 +59,7 @@ typedef const struct spi_dev_t * spi_dev;
 /**
   * @brief  Lookup for a gpio settings to configure the spi.
   * This function helps you to find a proper connection to spi if you only
-  * know the where it is used. You should provide a gpio and any of used pins.
+  * knows the where it is used. You should provide a gpio and any of used pins.
   * @param  gpio: GPIO where one of the MSCK/MISO/MOSI pins are connected to.
   * @param  pin_mask: pinmask of tx or rx pin.
   *
@@ -70,9 +70,9 @@ spi_dev find_spi_dev(GPIO_TypeDef *gpio, uint16_t pin_mask);
 /**
   * @brief  Get spi by index.
   * @param  num: inxex of SPI [1 or 2] depends of device choosen.
-  * @note   you can use find_uart_dev or get_uart_dev to get a uart settings.
+  * @note   you can use find_spi_dev or get_spi_dev to get a spi device pointer.
   *
-  * @retval 0 if no settings found or a pointer to struct if success.
+  * @retval 0 if no settings found or a pointer to the device if success.
   */
 spi_dev get_spi_dev(uint8_t num);
 
@@ -82,7 +82,7 @@ spi_dev get_spi_dev(uint8_t num);
   * @param  freq: Clock frequency in Hz.
   * @param  clock_high: idle clock mode false = low, true = high.
   *
-  * @retval 0 if no settings found or a pointer to struct if success.
+  * @retval 0 if no settings found or a pointer to the device if success.
   */
 int spi_init(spi_dev dev, uint32_t freq, bool idle_clock_high);
 

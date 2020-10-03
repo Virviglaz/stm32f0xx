@@ -47,6 +47,9 @@
 #include "spi.h"
 #include "rcc.h"
 #include <errno.h>
+#include <stdbool.h>
+
+#define NOF_DEVICES			2 /*< SPI1 & SPI2 */
 
 struct msg_t {
 	uint8_t *tx;			/* tx buffer pointer */
@@ -55,24 +58,24 @@ struct msg_t {
 	struct msg_t *next;		/* next message of linked list */
 };
 
-static struct spi_xfer_t {
-	struct msg_t *msg;
-	spi_dev dev;
-	void (*handler)(uint8_t spi_num, void *private_data);
-	void *private_data;
-	bool done;
+static struct xfer_t {
+	struct msg_t *msg;		/* messages linked list */
+	spi_dev dev;			/* pointer to spi device */
+	void (*handler)(void *data);	/* handler function for RTOS */
+	void *data;			/* caller private data */
+	bool done;			/* ready flag */
 	uint16_t cnt;			/* byte counter for isr mode */
 	struct {
 		GPIO_TypeDef *gpio;
 		uint16_t pin;
-	} cs;
+	} cs;				/* chip select */
 	struct {
 		DMA_Channel_TypeDef *tx;
 		DMA_Channel_TypeDef *rx;
-	} dma;
-} xfrs[2];
+	} dma;				/* dma channels */
+} xfrs[NOF_DEVICES];
 
-struct spi_dev_t {
+static const struct spi_dev_t {
 	uint8_t index;			/* index of spi i.e. 1..6 */
 	SPI_TypeDef *spi;		/* pointer to spi base address */
 	GPIO_TypeDef *gpio;		/* pointer to gpio base address */
@@ -82,10 +85,8 @@ struct spi_dev_t {
 	enum gpio_alt_t alt_func;	/* alt function index GPIO_AF0..7 */
 	uint8_t tx_dma_ch;		/* TX dma channel or 0 if not used */
 	uint8_t rx_dma_ch;		/* RX dma channel or 0 if not used */
-	struct spi_xfer_t *xfer;	/* pointer to allocated RAM buffers */
-};
-
-static const struct spi_dev_t pins[] = {
+	struct xfer_t *xfer;		/* pointer to allocated RAM buffers */
+} devices[] = {
 	{ 1, SPI1, GPIOA, BIT(5),  BIT(6),  BIT(7),  GPIO_AF0, 3, 2, &xfrs[0] },
 	{ 1, SPI1, GPIOB, BIT(3),  BIT(4),  BIT(5),  GPIO_AF0, 3, 2, &xfrs[0] },
 #if defined (STM32F030X4) || defined (STM32F030X6)
@@ -111,13 +112,26 @@ static inline uint16_t calc_clock_div(uint32_t bus_freq, uint32_t expected_freq)
 	return n - 1;
 }
 
-static void start_message_dma(struct spi_xfer_t *xfer)
+static void finish_transfer(struct xfer_t *xfer)
+{
+	SPI_TypeDef *spi = xfer->dev->spi;
+
+	spi->CR2 = 0;
+	gpio_set(xfer->cs.gpio, xfer->cs.pin);
+	BIT_CLR(spi->CR1, SPI_CR1_SPE);
+	if (xfer->handler)
+		xfer->handler(xfer->data);
+	xfer->done = true;
+}
+
+static void start_message_dma(struct xfer_t *xfer)
 {
 	struct msg_t *m = xfer->msg;
 	SPI_TypeDef *spi = xfer->dev->spi;
 
 	xfer->dma.tx->CCR = 0;
 	xfer->dma.rx->CCR = 0;
+
 	BIT_CLR(spi->CR1, SPI_CR1_SPE);
 
 	if (m) {
@@ -143,25 +157,24 @@ static void start_message_dma(struct spi_xfer_t *xfer)
 			dma_setup(xfer->dma.rx, (void *)&dummy,
 				(void *)&spi->DR, m->size, DMA_CCR_TCIE | \
 					DMA_CCR_EN);
+
 		BIT_SET(spi->CR1, SPI_CR1_SPE);
 	} else {
-		spi->CR2 = 0;
-		gpio_set(xfer->cs.gpio, xfer->cs.pin);
 		dma_release(xfer->dev->tx_dma_ch);
 		dma_release(xfer->dev->rx_dma_ch);
-		xfer->done = true;
+		finish_transfer(xfer);
 	}
 }
 
 static void rx_dma_isr(void *data)
 {
-	struct spi_xfer_t *xfer = data;
+	struct xfer_t *xfer = data;
 
 	xfer->msg = xfer->msg->next;
 	start_message_dma(xfer);
 }
 
-static void start_message_isr(struct spi_xfer_t *xfer)
+static void start_message_isr(struct xfer_t *xfer)
 {
 	struct msg_t *m = xfer->msg;
 	SPI_TypeDef *spi = xfer->dev->spi;
@@ -172,23 +185,19 @@ static void start_message_isr(struct spi_xfer_t *xfer)
 		spi->CR2 = (7 << 8) | SPI_CR2_FRXTH | \
 			SPI_CR2_TXEIE | SPI_CR2_RXNEIE;
 		*(__IO uint8_t *)&spi->DR = xfer->msg->tx[0];
-	} else {
-		spi->CR2 = 0;
-		gpio_set(xfer->cs.gpio, xfer->cs.pin);
-		BIT_CLR(spi->CR1, SPI_CR1_SPE);
-		xfer->done = true;
-	}
+	} else
+		finish_transfer(xfer);
 }
 
 static int transfer(
 	spi_dev dev,
 	struct msg_t **msg,
 	GPIO_TypeDef *gpio, uint16_t pin,
-	void (*handler)(uint8_t spi_num, void *private_data),
-	void *private_data
+	void (*handler)(void *data),
+	void *data
 )
 {
-	struct spi_xfer_t *xfer = &xfrs[dev->index - 1];
+	struct xfer_t *xfer = &xfrs[dev->index - 1];
 	struct msg_t *m = *msg;
 
 	xfer->dev = dev;
@@ -196,27 +205,29 @@ static int transfer(
 	xfer->cs.pin = pin;
 	xfer->msg = m;
 	xfer->handler = handler;
-	xfer->private_data = private_data;
+	xfer->data = data;
 	xfer->done = false;
 	xfer->cnt = 0;
 
-	/* chip enable */
-	gpio_clr(gpio, pin);
-
 	/* build a linked list */
 	do {
-		msg++;
-		m->next = *msg;
+		do {
+			m->next = *++msg;
+		} while (m->next && !m->next->size);
 		m = m->next;
 	} while (m);
 
 	xfer->dma.tx = get_dma_ch(dev->tx_dma_ch, 0, 0);
 	xfer->dma.rx = get_dma_ch(dev->rx_dma_ch, rx_dma_isr, xfer);
 
+	/* chip enable */
+	gpio_clr(gpio, pin);
+
 	/* use isr mode, dma is occupied or not available */
 	if (!xfer->dma.tx || !xfer->dma.rx) {
 		dma_release(dev->tx_dma_ch);
 		dma_release(dev->rx_dma_ch);
+		xfer->dma.rx = 0;
 
 		/* DMA failed, use ISR mode */
 		start_message_isr(xfer);
@@ -239,8 +250,8 @@ static int send_message(
 	uint8_t *tx_data,
 	uint8_t *rx_data,
 	uint16_t size,
-	void (*handler)(uint8_t spi_num, void *private_data),
-	void *private_data)
+	void (*handler)(void *data),
+	void *data)
 {
 	/* we use static variable to reduce the stack usage using RTOS */
 	static struct msg_t msg[2];
@@ -258,10 +269,10 @@ static int send_message(
 	msgs[1] = &msg[1];
 	msgs[2] = 0;
 
-	return transfer(dev, msgs, gpio, pin, handler, private_data);
+	return transfer(dev, msgs, gpio, pin, handler, data);
 }
 
-static void spi_tx_isr(struct spi_xfer_t *xfer)
+static void spi_tx_isr(struct xfer_t *xfer)
 {
 	struct msg_t *m = xfer->msg;
 	SPI_TypeDef *spi = xfer->dev->spi;
@@ -278,11 +289,16 @@ static void spi_tx_isr(struct spi_xfer_t *xfer)
 		*(__IO uint8_t *)&spi->DR = 0; /* send dummy byte */
 }
 
-static void spi_rx_isr(struct spi_xfer_t *xfer)
+static void spi_rx_isr(struct xfer_t *xfer)
 {
 	struct msg_t *m = xfer->msg;
 	SPI_TypeDef *spi = xfer->dev->spi;
 	uint16_t cnt = xfer->cnt;
+
+	if (xfer->dma.rx) {
+		start_message_isr(xfer);
+		return;
+	}
 
 	if (m->rx) {
 		m->rx[cnt] = *(__IO uint8_t *)&spi->DR;
@@ -304,8 +320,8 @@ spi_dev find_spi_dev(GPIO_TypeDef *gpio, uint16_t pin_mask)
 {
 	uint8_t i;
 
-	for (i = 0; i != ARRAY_SIZE(pins); i++) {
-		spi_dev dev = &pins[i];
+	for (i = 0; i != ARRAY_SIZE(devices); i++) {
+		spi_dev dev = &devices[i];
 		if (dev->gpio == gpio && (dev->msck & pin_mask || \
 			dev->miso & pin_mask || dev->mosi & pin_mask))
 				return dev;
@@ -318,8 +334,8 @@ spi_dev get_spi_dev(uint8_t num)
 {
 	uint8_t i;
 
-	for (i = 0; i != ARRAY_SIZE(pins); i++) {
-		spi_dev dev = &pins[i];
+	for (i = 0; i != ARRAY_SIZE(devices); i++) {
+		spi_dev dev = &devices[i];
 		if (dev->index == num)
 			return dev;
 	}
@@ -379,7 +395,7 @@ int spi_read_reg(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
 
 void SPI1_IRQHandler(void)
 {
-	struct spi_xfer_t *xfer = &xfrs[0];
+	struct xfer_t *xfer = &xfrs[0];
 	uint16_t status = SPI1->SR;
 
 	if (status & SPI_SR_TXE)
@@ -391,12 +407,12 @@ void SPI1_IRQHandler(void)
 
 void SPI2_IRQHandler(void)
 {
-	struct spi_xfer_t *xfer = &xfrs[1];
+	struct xfer_t *xfer = &xfrs[1];
 	uint16_t status = SPI2->SR;
 
 	if (status & SPI_SR_TXE)
 		spi_tx_isr(xfer);
 
 	if (status & SPI_SR_RXNE)
-		spi_rx_isr(xfer);	
+		spi_rx_isr(xfer);
 }

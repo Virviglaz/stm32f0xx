@@ -67,7 +67,7 @@ typedef void (*uart_rx_handler_t)(char *buffer, uint16_t size, void *data);
   * @param  gpio: GPIO where one of the tx/rx pins are connected to.
   * @param  pin_mask: pinmask of tx or rx pin.
   *
-  * @retval 0 if no settings found or a pointer to struct if success.
+  * @retval 0 if no settings found or a pointer to the device if success.
   */
 uart_dev find_uart_dev(GPIO_TypeDef *gpio, uint16_t pin_mask);
 
@@ -76,7 +76,7 @@ uart_dev find_uart_dev(GPIO_TypeDef *gpio, uint16_t pin_mask);
   * @param  num: inxex of UART [1..6] depends of device choosen.
   * @note   you can use find_uart_dev or get_uart_dev to get a uart settings.
   *
-  * @retval 0 if no settings found or a pointer to struct if success.
+  * @retval 0 if no settings found or a pointer to the device if success.
   */
 uart_dev get_uart_dev(uint8_t num);
 

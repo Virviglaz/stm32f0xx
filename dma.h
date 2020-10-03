@@ -52,11 +52,16 @@
 #include <stm32f0xx.h>
 #include <stdint.h>
 
+/* device to memory and back */
 #define DMA_FLAG_DEV2MEM_B	(DMA_CCR_MINC | DMA_CCR_TCIE | DMA_CCR_EN)
-#define DMA_FLAG_MEM2DEV_B	(DMA_CCR_MINC | DMA_CCR_DIR | \
-	DMA_CCR_TCIE | DMA_CCR_EN)
-#define DMA_MEM2MEM_B		(DMA_CCR_MEM2MEM | DMA_CCR_MINC | \
-	DMA_CCR_PINC | DMA_CCR_DIR | DMA_CCR_TCIE | DMA_CCR_EN)
+#define DMA_FLAG_MEM2DEV_B	(DMA_FLAG_DEV2MEM_B | DMA_CCR_DIR)
+
+/* dummy read/write */
+#define DMA_FLAG_DUM2DEV_B	(DMA_CCR_TCIE | DMA_CCR_DIR | DMA_CCR_EN)
+#define DMA_FLAG_DEV2DUM_B	(DMA_CCR_TCIE | DMA_CCR_EN)
+
+#define DMA_MEM2MEM_B		(DMA_FLAG_MEM2DEV_B | DMA_CCR_MEM2MEM | \
+					DMA_CCR_PINC)
 
 /**
   * @brief  Initialize DMA and find a channel.

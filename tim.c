@@ -104,7 +104,7 @@ static const struct tim_dev_t {
 	uint8_t index;			/* index of timer */
 	TIM_TypeDef *tim;		/* pointer to tim base address */
 	struct isr_t *isr;		/* pointer to isr parameters */
-	const struct pwm_t *pwm;		/* pointer to PWM out channels */
+	const struct pwm_t *pwm;	/* pointer to PWM out channels */
 	enum IRQn irq;			/* irq number */
 } params[] = {
 	{ 1,  TIM1,  &tim_isr[0], &tim1_pwm, 	TIM1_BRK_UP_TRG_COM_IRQn },

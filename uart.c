@@ -48,6 +48,7 @@
 #include <errno.h>
 #include <string.h>
 
+#define NOF_DEVICES			6 /*< USART1..USART6 */
 #define UART(x)		(void *)uarts[(x) - 1]
 
 __INLINE static uint16_t UART_BRR_SAMPLING8(uint32_t _PCLK_, uint32_t _BAUD_)
@@ -55,17 +56,6 @@ __INLINE static uint16_t UART_BRR_SAMPLING8(uint32_t _PCLK_, uint32_t _BAUD_)
     uint16_t Div = (_PCLK_ + _BAUD_) / (_BAUD_ << 1);
     return ((Div & ~0x7) << 1 | (Div & 0x07));
 }
-
-struct uart_dev_t {
-	uint8_t index;			/* index of uart i.e. 1..6 */
-	USART_TypeDef *uart;		/* pointer to uart base address */
-	GPIO_TypeDef *gpio;		/* pointer to gpio base address */
-	uint16_t tx_pin;		/* tx pin bit mask BIT(x) */
-	uint16_t rx_pin;		/* rx pin bit mask BIT(x) */
-	enum gpio_alt_t alt_func;	/* alt function index GPIO_AF0..7 */
-	uint8_t tx_dma_ch;		/* TX dma channel or 0 if not used */
-	struct uart_buf_t *buffers;	/* pointer to allocated RAM buffers */
-};
 
 struct uart_buf_t {
 	struct {
@@ -89,9 +79,19 @@ struct uart_buf_t {
 };
 
 /* RAM buffers for UART TX/RX */
-static struct uart_buf_t bufs[6];
+static struct uart_buf_t bufs[NOF_DEVICES];
 
-static const struct uart_dev_t pins[] = {
+
+static const struct uart_dev_t {
+	uint8_t index;			/* index of uart i.e. 1..6 */
+	USART_TypeDef *uart;		/* pointer to uart base address */
+	GPIO_TypeDef *gpio;		/* pointer to gpio base address */
+	uint16_t tx_pin;		/* tx pin bit mask BIT(x) */
+	uint16_t rx_pin;		/* rx pin bit mask BIT(x) */
+	enum gpio_alt_t alt_func;	/* alt function index GPIO_AF0..7 */
+	uint8_t tx_dma_ch;		/* TX dma channel or 0 if not used */
+	struct uart_buf_t *buffers;	/* pointer to allocated RAM buffers */
+} devices[] = {
 #if defined (STM32F030xC)
 	{ 4, USART4, GPIOA, BIT(0),  BIT(1),  GPIO_AF4, 0, &bufs[3] },
 #endif
@@ -128,8 +128,8 @@ uart_dev find_uart_dev(GPIO_TypeDef *gpio, uint16_t pin_mask)
 {
 	uint8_t i;
 
-	for (i = 0; i != ARRAY_SIZE(pins); i++) {
-		uart_dev dev = &pins[i];
+	for (i = 0; i != ARRAY_SIZE(devices); i++) {
+		uart_dev dev = &devices[i];
 		if (dev->gpio == gpio)
 			if (dev->tx_pin & pin_mask || dev->rx_pin & pin_mask)
 				return dev;
@@ -142,8 +142,8 @@ uart_dev get_uart_dev(uint8_t num)
 {
 	uint8_t i;
 
-	for (i = 0; i != ARRAY_SIZE(pins); i++) {
-		uart_dev dev = &pins[i];
+	for (i = 0; i != ARRAY_SIZE(devices); i++) {
+		uart_dev dev = &devices[i];
 		if (dev->index == num)
 			return dev;
 	}
