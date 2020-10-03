@@ -30,14 +30,11 @@ static void uart_rx_handler(char *buffer, uint16_t size, void *data)
   /* your code here, data is stored in buffer */
 }
 
-/* find uart connected to GPIOB, pin 6 (can be tx or rx pin) */
-uart = find_uart_dev(PB6);;
+/* find uart connected to GPIOB, pin 6 (can be tx or rx pin), init for 9600 bod */
+uart = find_uart_dev(PB6, 9600);
 or
-/* use UART1 insted if you know where it is connected to */
-uart = get_uart_dev(1);
-
-/* err will be 0 if uart manage to initialize with 9600 bod */
-err = uart_init(uart, 9600);
+/* use UART1 insted if you know where it is connected to and init it for 9600 bod */
+uart = get_uart_dev(1, 9600);
 
 /* enabling receiver */
 uart_enable_rx(uart, rx_buf, sizeof(rx_buf),
@@ -49,11 +46,8 @@ uart_send_string(uart, "Hallo world!\r\n");
 ## SPI example
 If DMA is available, transfer will be done using DMA. Otherwise interrupt will be used.
 ```c
-/* use SPI1 */
-spi_dev spi = get_spi_dev(1);
-
-/* init SPI1 with 10MHz and idle clock mode */
-err = spi_init(spi, 10000000, false);
+/* use SPI1 and initialize for 10MHz and idle clock mode */
+spi_dev spi = get_spi_dev(1, 10000000, false);
 
 /* send 16 bytes to 0xEE register of some chip connected to PA4 */
 spi_write_reg(spi, PA4, 0xEE, (void *)rx_buf, 16);
