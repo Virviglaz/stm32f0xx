@@ -291,7 +291,7 @@ int uart_send_data(uart_dev dev, char *buf, uint16_t size,
 	b->tx.data = data;
 	b->tx.done = false;
 	if (dev->tx_dma_ch) { /* use DMA */
-#if !defined(FREERTOS) /* TODO: DMA conflict with SPI */
+#if !defined(UART_NODMA) /* TODO: DMA conflict with SPI */
 		ch = get_dma_ch(dev->tx_dma_ch, tx_handler, b);
 #endif
 		if (ch) {

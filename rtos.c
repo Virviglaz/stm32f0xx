@@ -57,25 +57,37 @@
 
 static QueueHandle_t isr_queue = 0;
 static void (*rtos_err_handler)(const char *err);
+static void (*wdt_toggle)(void);
 
 static void isr_daemon_task(void *par)
 {
+	TaskHandle_t handle;
+	uint32_t timeout = (uint32_t)par;
+
 	while (1) {
-		TaskHandle_t handle;
-		if (xQueueReceive(isr_queue, &handle, portMAX_DELAY) == pdPASS)
+		if (xQueueReceive(isr_queue, &handle, timeout) == pdPASS)
 			vTaskResume(handle);
+		else {
+			if (wdt_toggle)
+				wdt_toggle();
+		}
 	}
 }
 
-void rtos_deferred_isr_init(void (*err_handler)(const char *err))
+void rtos_deferred_isr_init(void (*err_handler)(const char *err),
+	void (*tickfunc)(void), uint32_t timeout)
 {
-	rtos_err_handler = err_handler;
-	if (!isr_queue) {
-		isr_queue = xQueueCreate(QUEUE_SIZE, sizeof(TaskHandle_t));
-		xTaskCreate(isr_daemon_task, "isr", MIN_STACK_SIZE, 0, \
-			tskIDLE_PRIORITY, 0);
+	if (isr_queue)
+		return;
 
-	}
+	rtos_err_handler = err_handler;
+	wdt_toggle = tickfunc;
+	if (!timeout)
+		timeout = portMAX_DELAY;
+
+	isr_queue = xQueueCreate(QUEUE_SIZE, sizeof(TaskHandle_t));
+
+	xTaskCreate(isr_daemon_task, "isr", 64, (void *)timeout, 0, 0);
 }
 
 void rtos_schedule_isr(TaskHandle_t handle)

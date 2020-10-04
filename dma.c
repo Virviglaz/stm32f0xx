@@ -68,6 +68,7 @@ static void dma_enable_isr(void)
 	if (is_done)
 		return;
 
+	RCC->AHBENR |= RCC_AHBENR_DMA1EN;
 	NVIC_EnableIRQ(DMA1_Channel1_IRQn);
 	NVIC_EnableIRQ(DMA1_Channel2_3_IRQn);
 	NVIC_EnableIRQ(DMA1_Channel4_5_IRQn);
@@ -81,7 +82,6 @@ DMA_Channel_TypeDef *get_dma_ch(uint8_t channel,
 	DMA_Channel_TypeDef *ch;
 	struct isr_t *isr;
 
-	RCC->AHBENR |= RCC_AHBENR_DMA1EN;
 	dma_enable_isr();
 
 	if (channel >= ARRAY_SIZE(dma1_chs))

@@ -81,10 +81,6 @@ static struct xfer_t {
 	void *data;
 	bool done;
 	uint16_t cnt;			/* byte counter for isr mode */
-	struct {
-		DMA_Channel_TypeDef *tx;
-		DMA_Channel_TypeDef *rx;
-	} dma;
 } xfrs[NOF_DEVICES];
 
 static const struct i2c_dev_t {

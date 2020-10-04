@@ -69,10 +69,13 @@
 /**
   * @brief  Initialize deferred interrupt task.
   * @param  err_handler: optional pointer to error handler function.
+  * @param  tickfunc: optional pointer to watchdog toggle function.
+  * @param  timeout: period of toggling in ms.
   *
   * @retval None.
   */
-void rtos_deferred_isr_init(void (*err_handler)(const char *err));
+void rtos_deferred_isr_init(void (*err_handler)(const char *err),
+	void (*tickfunc)(void), uint32_t timeout);
 
 /**
   * @brief  Add deferred interrupt to queue.
