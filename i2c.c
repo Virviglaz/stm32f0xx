@@ -117,33 +117,20 @@ static const struct i2c_dev_t {
 static uint32_t get_timings(bool fast_mode)
 {
 	struct system_clock_t *clock = get_clocks();
-	static const struct {
-		const uint32_t bus_speed;
-		const uint32_t std;
-		const uint32_t fast;
-	} table[] = {
-		{ 8000000,	0x00201D2B,	0x00100444 },
-		{ 12000000,	0x00402D42,	0x00200669 },
-		{ 16000000,	0x00503D5A,	0x00301D7A },
-		{ 20000000,	0x00604C72,	0x003008B6 },
-		{ 24000000,	0x00805C89,	0x00400BDA },
-		{ 28000000,	0x20302533,	0x00500FFD },
-		{ 32000000,	0x20302E37,	0x2020174E },
-		{ 36000000,	0x00C08CCE,	0x20200A68 },
-		{ 40000000,	0x00D09BE7,	0x007085FD },
-		{ 44000000,	0x00F0ABFE,	0x0080ABFE },
-		{ 48000000,	0x10805E89,	0x10400CDB },
-		{ 56000000,	0x10906EA0,	0x105039D5 },
-		{ 64000000,	0x60302730,	0x60100453 },
-		{ 72000000,	0x10C08DCF,	0x30300BA2 },
-	};
-	uint8_t i;
+	struct {
+		uint8_t scll	: 8;
+		uint8_t sclh	: 8;
+		uint8_t sdadel	: 4;
+		uint8_t scldel	: 4;
+		uint8_t 	: 4;
+		uint8_t presc	: 4;
+	} t;
 
-	for (i = 0; i != ARRAY_SIZE(table); i++)
-		if (table[i].bus_speed >= clock->apb1_freq)
-			return fast_mode ? table[i].fast : table[i].std;
+	*(uint32_t *)&t = fast_mode ? 0x00310309 : 0x00420F13;
 
-	return 0;
+	t.presc = (clock->apb1_freq / 8000000) - fast_mode ? 1 : 0; 
+
+	return *(uint32_t *)&t;
 }
 
 static int init(i2c_dev dev, bool fast_mode)
