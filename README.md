@@ -55,7 +55,17 @@ spi_write_reg(spi, PA4, 0xEE, (void *)rx_buf, 16);
 /* receive 16 bytes from 0xEE register of some chip connected to PA4 */
 spi_read_reg(spi, PA4, 0xEE, (void *)rx_buf, 16);
 ```
+## I2C example
+```c
+/* init I2C1 in fast mode (true == fast, false == normal)
+i2c_dev i2c = i2c = get_i2c_dev(1, true);
 
+/* read 10 bytes of data from MPU6050 address 0x68 register 0xC3 in buffer */
+i2c_read_reg(i2c, 0x68, 0xC3, buf, 10);
+
+/* write 10 bytes of data from buffer to MPU6050 at 0x68 address */
+i2c_write_reg(i2c, 0x68, 0xC3, buf, 10);
+```
 ## DELAYS
 Simply use, do not init anything.
 ```c

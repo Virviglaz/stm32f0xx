@@ -127,8 +127,7 @@ static uint32_t get_timings(bool fast_mode)
 	} t;
 
 	*(uint32_t *)&t = fast_mode ? 0x00310309 : 0x00420F13;
-
-	t.presc = (clock->apb1_freq / 8000000) - fast_mode ? 1 : 0; 
+	t.presc = fast_mode ? 0 : 1;
 
 	return *(uint32_t *)&t;
 }
@@ -348,7 +347,7 @@ static void isr(const uint8_t i2c_num)
 	if (isr & I2C_ISR_TXIS)
 		next_byte_send(xfer, i2c);
 
-	if (isr & I2C_ISR_RXNE) {
+	if (m && isr & I2C_ISR_RXNE) {
 		m->data[xfer->cnt] = i2c->RXDR;
 		xfer->cnt++;
 	}
