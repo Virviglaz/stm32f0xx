@@ -111,6 +111,34 @@ int spi_read_reg(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
 
 #ifdef FREERTOS
 
+/**
+  * @brief  Write a sequence to register using RTOS.
+  * @param  dev: pointer to device struct.
+  * @param  gpio: Chip select gpio.
+  * @param  pin: Chip select pin.
+  * @param  reg: Register number to write to.
+  * @param  data: Pointer where the data is stored.
+  * @param  size: Amount of bytes to write.
+  *
+  * @retval 0 if success.
+  */
+int spi_write_reg_rtos(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
+	uint8_t reg, uint8_t *data, uint16_t size);
+
+/**
+  * @brief  Read a sequence from register using RTOS.
+  * @param  dev: pointer to device struct.
+  * @param  gpio: Chip select gpio.
+  * @param  pin: Chip select pin.
+  * @param  reg: Register number to read from.
+  * @param  data: Pointer where the data will be stored.
+  * @param  size: Amount of bytes to read.
+  *
+  * @retval 0 if success.
+  */
+int spi_read_reg_rtos(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
+	uint8_t reg, uint8_t *data, uint16_t size);
+
 #endif /* FREERTOS */
 
 #ifdef __cplusplus
@@ -118,4 +146,3 @@ int spi_read_reg(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
 #endif
 
 #endif /* __SPI_H__ */
-

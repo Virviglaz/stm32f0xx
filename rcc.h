@@ -170,7 +170,7 @@ static inline void set_ahb_clock_source(enum ahb_clock_source_t src)
   */
 static inline enum ahb_clock_source_t get_ahb_clock_source(void)
 {
-	return (RCC->CFGR & RCC_CFGR_SWS) >> 2;
+	return (enum ahb_clock_source_t)((RCC->CFGR & RCC_CFGR_SWS) >> 2);
 }
 
 /**
@@ -191,7 +191,7 @@ static inline void set_ahb_clock_divider(enum ahb_clock_divider_t div)
 static inline enum ahb_clock_divider_t get_ahb_clock_divider(void)
 {
 	uint32_t ret = (RCC->CFGR & RCC_CFGR_HPRE) >> 4;
-	return ret < AHB_DIV_1 ? AHB_DIV_1 : ret;
+	return (enum ahb_clock_divider_t)(ret < AHB_DIV_1 ? AHB_DIV_1 : ret);
 }
 
 /**
@@ -212,7 +212,7 @@ static inline void set_apb_clock_divider(enum apb_clock_divider_t div)
 static inline enum apb_clock_divider_t get_apb_clock_divider(void)
 {
 	uint32_t ret = (RCC->CFGR & RCC_CFGR_PPRE) >> 8;
-	return ret < APB_DIV_1 ? APB_DIV_1 : ret;
+	return (enum apb_clock_divider_t)(ret < APB_DIV_1 ? APB_DIV_1 : ret);
 }
 
 /**

@@ -362,3 +362,69 @@ void I2C2_IRQHandler(void)
 {
 	isr(1);
 }
+
+#ifdef FREERTOS
+
+struct rtos_task_t {
+	void *task_handle;
+	uint8_t err;
+};
+
+static void rtos_handler(void *task, uint8_t err)
+{
+	struct rtos_task_t *param = task;
+
+	param->err = err;
+
+	rtos_schedule_isr(param->task_handle);
+}
+
+/*
+ * this is rtos oriented i2c function. During the transfer the task is put
+ * on hold and not using a cpu time. When transfer is finished the task
+ * handler is reported to isr daemon resulting deferred interrupt technics.
+ * isr daemon is waiking up calling task and execution of code continues.
+ */
+static int rw_reg8_rtos(i2c_dev dev, uint8_t addr, uint8_t *reg,
+	uint8_t reg_size, uint8_t *data, uint16_t size, enum dir_t dir)
+{
+	int res;
+	struct rtos_task_t params;
+	static SemaphoreHandle_t mutex[NOF_DEVICES] = { 0 };
+	uint8_t num = dev->index - 1;
+
+	if (!mutex[num])
+		mutex[num] = xSemaphoreCreateMutex();
+
+	xSemaphoreTake(mutex[num], portMAX_DELAY);
+
+	params.task_handle = xTaskGetCurrentTaskHandle();
+
+	res = send_message(dev, addr, reg, reg_size, data, size, dir,
+		rtos_handler, &params);
+	if (!res)
+		vTaskSuspend(params.task_handle);
+
+	xSemaphoreGive(mutex[num]);
+
+	if (res)
+		return res;
+
+	return -params.err;
+}
+
+int i2c_write_reg_rtos(i2c_dev dev, uint8_t addr, uint8_t reg,
+	uint8_t *data, uint16_t size)
+{
+	return rw_reg8_rtos(dev, addr, &reg, sizeof(reg),
+		data, size, WRITING);
+}
+
+int i2c_read_reg_rtos(i2c_dev dev, uint8_t addr, uint8_t reg,
+	uint8_t *data, uint16_t size)
+{
+	return rw_reg8_rtos(dev, addr, &reg, sizeof(reg),
+		data, size, READING);
+}
+
+#endif /* FREERTOS */

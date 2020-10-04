@@ -125,6 +125,39 @@ int uart_send_data(uart_dev dev, char *buf, uint16_t size,
   */
 int uart_send_string(uart_dev dev, char *buf);
 
+#ifdef FREERTOS
+
+/**
+  * @brief  send data using RTOS.
+  * @param  dev: Pointer to settings struct.
+  * @param  buf: buffer to send.
+  * @param  size: amount of bytes to send.
+  *
+  * @retval none.
+  */
+void uart_send_data_rtos(uart_dev dev, char *buf, uint16_t size);
+
+/**
+  * @brief  send null termitanted string using RTOS.
+  * @param  dev: Pointer to settings struct.
+  * @param  buf: buffer to send.
+  *
+  * @retval none.
+  */
+void uart_send_string_rtos(uart_dev dev, char *string);
+
+/**
+  * @brief  Wait for data from uart using RTOS.
+  * @param  dev: Pointer to settings struct.
+  * @param  buf: buffer to send.
+  * @param  size: maximum buffer size.
+  *
+  * @retval amount of bytes received.
+  */
+uint16_t uart_receive_rtos(uart_dev dev, char *buf, uint16_t size);
+
+#endif /* FREERTOS */
+
 #ifdef __cplusplus
 }
 #endif

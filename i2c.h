@@ -52,6 +52,7 @@
 #include <stm32f0xx.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "rtos.h"
 
 #define I2C_SUCCESS	0
 #define I2C_ERR_NOACK	1
@@ -104,6 +105,34 @@ int i2c_write_reg(i2c_dev dev, uint8_t addr, uint8_t reg,
   */
 int i2c_read_reg(i2c_dev dev, uint8_t addr, uint8_t reg,
 	uint8_t *data, uint16_t size);
+
+#ifdef FREERTOS
+
+/**
+  * @brief  Transfer the data buffer to reg using RTOS
+  * @param  dev: device pointer.
+  * @param  addr: device i2c address
+  * @param  data: pointer to buffer
+  * @param  size: amount of bytes to transfer
+  *
+  * @retval 0 if success, I2C_ERR_NOACK if device not responds
+  */
+int i2c_write_reg_rtos(i2c_dev dev, uint8_t addr, uint8_t reg,
+	uint8_t *data, uint16_t size);
+
+/**
+  * @brief  Receives the data to buffer starting from reg using RTOS
+  * @param  dev: device pointer.
+  * @param  addr: device i2c address
+  * @param  data: pointer to buffer
+  * @param  size: amount of bytes to receive
+  *
+  * @retval 0 if success, I2C_ERR_NOACK if device not responds
+  */
+int i2c_read_reg_rtos(i2c_dev dev, uint8_t addr, uint8_t reg,
+	uint8_t *data, uint16_t size);
+
+#endif /* FREERTOS */
 
 #ifdef __cplusplus
 }

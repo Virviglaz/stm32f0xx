@@ -141,22 +141,17 @@ static void start_message_dma(struct xfer_t *xfer)
 
 		if (m->tx)	/* DMA MEM2DEV */
 			dma_setup(xfer->dma.tx, (void *)m->tx, (void *)&spi->DR,
-				m->size, DMA_CCR_DIR | DMA_CCR_MINC | \
-					DMA_CCR_TCIE | DMA_CCR_EN);
+				m->size, DMA_FLAG_MEM2DEV_B);
 		else		/* DMA1 DUMMY2DEV */
 			dma_setup(xfer->dma.tx, (void *)&dummy,
-				(void *)&spi->DR, m->size,
-					DMA_CCR_TCIE | DMA_CCR_DIR | \
-						DMA_CCR_EN);
+				(void *)&spi->DR, m->size, DMA_FLAG_DUM2DEV_B);
 
 		if (m->rx)	/* DMA DEV2MEM */
 			dma_setup(xfer->dma.rx, (void *)m->rx, (void *)&spi->DR,
-				m->size, DMA_CCR_MINC | DMA_CCR_TCIE | \
-					DMA_CCR_EN);
+				m->size, DMA_FLAG_DEV2MEM_B);
 		else		/* DMA DEV2DUMMY */
 			dma_setup(xfer->dma.rx, (void *)&dummy,
-				(void *)&spi->DR, m->size, DMA_CCR_TCIE | \
-					DMA_CCR_EN);
+				(void *)&spi->DR, m->size, DMA_FLAG_DEV2DUM_B);
 
 		BIT_SET(spi->CR1, SPI_CR1_SPE);
 	} else {
@@ -164,6 +159,11 @@ static void start_message_dma(struct xfer_t *xfer)
 		dma_release(xfer->dev->rx_dma_ch);
 		finish_transfer(xfer);
 	}
+}
+
+static void tx_dma_isr(void *data)
+{
+	/* dummy call */
 }
 
 static void rx_dma_isr(void *data)
@@ -217,7 +217,7 @@ static int transfer(
 		m = m->next;
 	} while (m);
 
-	xfer->dma.tx = get_dma_ch(dev->tx_dma_ch, 0, 0);
+	xfer->dma.tx = get_dma_ch(dev->tx_dma_ch, tx_dma_isr, xfer);
 	xfer->dma.rx = get_dma_ch(dev->rx_dma_ch, rx_dma_isr, xfer);
 
 	/* chip enable */
@@ -415,3 +415,56 @@ void SPI2_IRQHandler(void)
 	if (status & SPI_SR_RXNE)
 		rx_isr(xfer);
 }
+
+#ifdef FREERTOS
+
+static void handler(void *data)
+{
+	rtos_schedule_isr(data);
+}
+
+static int send_message_rtos(
+	spi_dev dev,
+	GPIO_TypeDef *gpio,
+	uint16_t pin,
+	uint8_t *reg,
+	uint8_t reg_size,
+	uint8_t *tx_data,
+	uint8_t *rx_data,
+	uint16_t size)
+{
+	static SemaphoreHandle_t mutex[NOF_DEVICES] = { 0 };
+	TaskHandle_t handle;
+	int res;
+	uint8_t n = dev->index - 1;
+
+	if (!mutex[n])
+		mutex[n] = xSemaphoreCreateMutex();
+
+	xSemaphoreTake(mutex[n], portMAX_DELAY);
+
+	handle = xTaskGetCurrentTaskHandle();
+
+	res = send_message(dev, gpio, pin, reg, reg_size,
+		tx_data, rx_data, size, handler, handle);
+	if (!res)
+		vTaskSuspend(handle);
+
+	xSemaphoreGive(mutex[n]);
+
+	return res;
+}
+
+int spi_write_reg_rtos(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
+	uint8_t reg, uint8_t *data, uint16_t size)
+{
+	return send_message_rtos(dev, gpio, pin, &reg, 1, data, 0, size);
+}
+
+int spi_read_reg_rtos(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
+	uint8_t reg, uint8_t *data, uint16_t size)
+{
+	return send_message_rtos(dev, gpio, pin, &reg, 1, 0, data, size);
+}
+
+#endif /* FREERTOS */

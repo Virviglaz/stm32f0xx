@@ -61,30 +61,18 @@ const DMA_Channel_TypeDef *dma1_chs[] = {
 	DMA1_Channel5,
 };
 
-static void dma_enable_isr(uint8_t channel)
+static void dma_enable_isr(void)
 {
-	IRQn_Type IRQn;
+	static bool is_done = false;
 
-	switch (channel) {
-	case 0:
-		IRQn = DMA1_Channel1_IRQn;
-		break;
-	case 1:
-		IRQn = DMA1_Channel2_3_IRQn;
-		break;
-	case 2:
-		IRQn = DMA1_Channel2_3_IRQn;
-		break;
-	case 3:
-		IRQn = DMA1_Channel4_5_IRQn;
-		break;
-	case 4:
-		IRQn = DMA1_Channel4_5_IRQn;
-		break;
-	default:
+	if (is_done)
 		return;
-	}
-	NVIC_EnableIRQ(IRQn);
+
+	NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+	NVIC_EnableIRQ(DMA1_Channel2_3_IRQn);
+	NVIC_EnableIRQ(DMA1_Channel4_5_IRQn);
+
+	is_done = true;
 }
 
 DMA_Channel_TypeDef *get_dma_ch(uint8_t channel,
@@ -94,6 +82,7 @@ DMA_Channel_TypeDef *get_dma_ch(uint8_t channel,
 	struct isr_t *isr;
 
 	RCC->AHBENR |= RCC_AHBENR_DMA1EN;
+	dma_enable_isr();
 
 	if (channel >= ARRAY_SIZE(dma1_chs))
 		return 0;
@@ -105,12 +94,11 @@ DMA_Channel_TypeDef *get_dma_ch(uint8_t channel,
 	/* check channel is free */
 	if (isr->handler)
 		return 0;
-
 	/* assign handler */
 	isrs[channel].handler = handler;
 	isrs[channel].data = data;
-
-	dma_enable_isr(channel);
+	isr->handler = handler;
+	isr->data = data;
 
 	return ch;
 }
@@ -162,18 +150,34 @@ void DMA1_Channel1_IRQHandler(void)
 
 void DMA1_Channel2_3_IRQHandler(void)
 {
-	uint8_t ch_num = DMA1->ISR & DMA_ISR_TCIF2 ? 1 : 2;
-	DMA1->IFCR = ch_num == 1 ? DMA_IFCR_CGIF2 : DMA_IFCR_CGIF3;
-	if (isrs[ch_num].handler)
-		isrs[ch_num].handler(isrs[ch_num].data);
+	uint32_t isr = DMA1->ISR;
+	if (isr & DMA_ISR_TCIF2) {
+		DMA1->IFCR = DMA_IFCR_CGIF2;
+		if (isrs[1].handler)
+			isrs[1].handler(isrs[1].data);
+	}
+
+	if (isr & DMA_ISR_TCIF3) {
+		DMA1->IFCR = DMA_IFCR_CGIF3;
+		if (isrs[2].handler)
+			isrs[2].handler(isrs[2].data);
+	}
 }
 
 void DMA1_Channel4_5_IRQHandler(void)
 {
-	uint8_t ch_num = DMA1->ISR & DMA_ISR_TCIF4 ? 3 : 4;
-	DMA1->IFCR = ch_num == 1 ? DMA_IFCR_CGIF4 : DMA_IFCR_CGIF5;
-	if (isrs[ch_num].handler)
-		isrs[ch_num].handler(isrs[ch_num].data);
+	uint32_t isr = DMA1->ISR;
+	if (isr & DMA_ISR_TCIF4) {
+		DMA1->IFCR = DMA_IFCR_CGIF4;
+		if (isrs[3].handler)
+			isrs[3].handler(isrs[3].data);
+	}
+
+	if (isr & DMA_ISR_TCIF5) {
+		DMA1->IFCR = DMA_IFCR_CGIF5;
+		if (isrs[4].handler)
+			isrs[4].handler(isrs[4].data);
+	}
 }
 
 #ifndef FREERTOS
@@ -211,6 +215,7 @@ static void memcpy_dma(void *dst, const void *src, uint16_t size, uint16_t flag)
 	static SemaphoreHandle_t mutex = 0;
 	DMA_Channel_TypeDef *ch;
 	TaskHandle_t handle;
+	uint8_t ch_num;
 
 	if (!mutex)
 		mutex = xSemaphoreCreateMutex();
@@ -219,18 +224,14 @@ static void memcpy_dma(void *dst, const void *src, uint16_t size, uint16_t flag)
 
 	handle = xTaskGetCurrentTaskHandle();
 
-	ch = get_dma_ch(0, handler, handle);
+	ch = find_free_dma_ch(&ch_num, handler, handle);
 
 	if (!ch) /* failed to get channel, use cpu instead */
 		memcpy(dst, src, size);
 	else {
-		ch->CNDTR = size;
-		ch->CMAR = (uint32_t)src;
-		ch->CPAR = (uint32_t)dst;
-		ch->CCR = DMA_CCR1_MEM2MEM | DMA_CCR1_MINC | DMA_CCR1_PINC | \
-			DMA_CCR1_DIR | DMA_CCR1_TCIE | DMA_CCR1_EN | flag;
+		dma_setup(ch, (void *)src, dst, size, DMA_MEM2MEM_B | flag);
 		vTaskSuspend(handle);
-		dma_release(ch);
+		dma_release(ch_num);
 	}
 
 	xSemaphoreGive(mutex);

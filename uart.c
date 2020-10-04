@@ -267,7 +267,9 @@ static void tx_send(USART_TypeDef *uart, struct uart_buf_t *b)
 	if (b->tx.cnt == b->tx.size) {
 		BIT_CLR(uart->CR1, USART_CR1_TCIE);
 		BIT_CLR(uart->CR3, USART_CR3_DMAT);
-		tx_handler(b);
+		if (b->tx.handler)
+			b->tx.handler(b->tx.data);
+		b->tx.done = true;
 		return;
 	}
 
@@ -288,9 +290,10 @@ int uart_send_data(uart_dev dev, char *buf, uint16_t size,
 	b->tx.handler = handler;
 	b->tx.data = data;
 	b->tx.done = false;
-
 	if (dev->tx_dma_ch) { /* use DMA */
+#if !defined(FREERTOS) /* TODO: DMA conflict with SPI */
 		ch = get_dma_ch(dev->tx_dma_ch, tx_handler, b);
+#endif
 		if (ch) {
 			b->tx.dma_ch = dev->tx_dma_ch;
 			BIT_SET(uart->CR3, USART_CR3_DMAT);
@@ -363,3 +366,76 @@ void USART3_6_IRQHandler(void)
 	isr(USART3, 3, USART3->ISR);
 	isr(USART6, 6, USART6->ISR);
 }
+
+#ifdef FREERTOS
+
+static SemaphoreHandle_t tx_mutex[NOF_DEVICES] = { 0 };
+static SemaphoreHandle_t rx_mutex[NOF_DEVICES] = { 0 };
+
+static void rtos_tx_handler(void *data)
+{
+	rtos_schedule_isr(data);
+}
+
+static struct params_t {
+	TaskHandle_t handle;
+	uint16_t bytes_received;
+} rcv_params[NOF_DEVICES];
+
+static void rtos_rx_handler(char *buffer, uint16_t size,
+	void *data)
+{
+	struct params_t *par = data;
+
+	par->bytes_received = size;
+
+	rtos_schedule_isr(par->handle);
+}
+
+void uart_send_data_rtos(uart_dev dev, char *buf, uint16_t size)
+{
+	TaskHandle_t handle;
+	const uint8_t dev_num = dev->index - 1;
+
+	if (!tx_mutex[dev_num])
+		tx_mutex[dev_num] = xSemaphoreCreateMutex();
+
+	handle = xTaskGetCurrentTaskHandle();
+
+	xSemaphoreTake(tx_mutex[dev_num], portMAX_DELAY);
+
+	if (!uart_send_data(dev, buf, size, rtos_tx_handler, handle))
+		vTaskSuspend(handle);
+
+	xSemaphoreGive(tx_mutex[dev_num]);
+}
+
+void uart_send_string_rtos(uart_dev dev, char *string)
+{
+	uart_send_data_rtos(dev, string, strlen(string));
+}
+
+uint16_t uart_receive_rtos(uart_dev dev, char *buf, uint16_t size)
+{
+	const uint8_t dev_num = dev->index - 1;
+	struct params_t *par;
+
+	if (!rx_mutex[dev_num])
+		rx_mutex[dev_num] = xSemaphoreCreateMutex();
+
+	xSemaphoreTake(rx_mutex[dev_num], portMAX_DELAY);
+
+	par = &rcv_params[dev_num];
+
+	par->handle = xTaskGetCurrentTaskHandle();
+
+	uart_enable_rx(dev, buf, size, rtos_rx_handler, par);
+
+	vTaskSuspend(par->handle);
+
+	xSemaphoreGive(rx_mutex[dev_num]);
+
+	return par->bytes_received;
+}
+
+#endif /* FREERTOS */
