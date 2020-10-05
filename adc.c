@@ -46,13 +46,11 @@
 #include "adc.h"
 #include "gpio.h"
 
-struct adc_dev_t {
+static const struct adc_dev_t {
 	uint8_t index;			/* index of channel i.e. 1..16 */
 	GPIO_TypeDef *gpio;		/* pointer to gpio base address */
 	uint8_t pin;			/* ADC pin bit mask BIT(x) */
-};
-
-static const struct adc_dev_t pins[] = {
+} pins[] = {
 	{ 0,  GPIOA, 0 },
 	{ 1,  GPIOA, 1 },
 	{ 2,  GPIOA, 2 },

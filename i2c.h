@@ -56,6 +56,7 @@
 
 #define I2C_SUCCESS	0
 #define I2C_ERR_NOACK	1
+#define I2C_ERR_ARLO	2
 
 /* spi types redefenition */
 typedef const struct i2c_dev_t * i2c_dev;

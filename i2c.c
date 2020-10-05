@@ -56,6 +56,7 @@ enum task_t {
 	IN_PROGRESS,
 	DONE,
 	ERR_NOACK,
+	ERR_ARLO,
 	ERR_UNKNOWN,
 };
 
@@ -233,7 +234,7 @@ static int transfer(i2c_dev dev, uint8_t addr, struct msg_t **msg,
 	else
 		return 0;
 
-	return xfer->task == DONE ? I2C_SUCCESS : I2C_ERR_NOACK;
+	return -(int)(xfer->task - DONE);
 }
 
 static int send_message(
@@ -318,15 +319,24 @@ static void isr(const uint8_t i2c_num)
 	I2C_TypeDef *i2c = xfer->dev->i2c;
 	struct msg_t *m = xfer->msg;
 	uint16_t isr = (uint16_t)i2c->ISR;
+	uint8_t err = I2C_SUCCESS;
 
 	if (isr & I2C_ISR_NACKF) {
 		i2c->ICR = I2C_ICR_NACKCF;
 		xfer->task = ERR_NOACK;
+		err = ERR_NOACK;
+	}
+
+	if (isr & I2C_ISR_ARLO) {
+		xfer->task = ERR_ARLO;
+		BIT_CLR(i2c->CR1, I2C_CR1_PE);
+		err = I2C_ERR_ARLO;
+		finish_xfer(xfer, I2C_ERR_ARLO);
 	}
 
 	if (isr & I2C_ISR_STOPF) {
 		i2c->ICR = I2C_ICR_STOPCF;
-		finish_xfer(xfer, I2C_SUCCESS);
+		finish_xfer(xfer, err);
 	}
 
 	/* end of transfer isr */
