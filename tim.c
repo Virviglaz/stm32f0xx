@@ -108,6 +108,7 @@ static const struct tim_dev_t {
 	enum IRQn irq;			/* irq number */
 } params[] = {
 	{ 1,  TIM1,  &tim_isr[0], &tim1_pwm, 	TIM1_BRK_UP_TRG_COM_IRQn },
+	{ 2,  TIM2 },
 	{ 3,  TIM3,  &tim_isr[1], &tim3_pwm,	TIM3_IRQn },
 	{ 6,  TIM6,  &tim_isr[2], 0,		TIM6_IRQn },
 	{ 7,  TIM7,  &tim_isr[3], 0,		TIM7_IRQn },
@@ -129,6 +130,9 @@ static uint32_t get_tim_clock(uint8_t tim)
 	case 1:
 		BIT_SET(RCC->APB2ENR, RCC_APB2ENR_TIM1EN);
 		return clocks->apb2_freq;
+	case 2:
+		BIT_SET(RCC->APB1ENR, RCC_APB1ENR_TIM2EN);
+		return clocks->apb1_freq;
 	case 3:
 		BIT_SET(RCC->APB1ENR, RCC_APB1ENR_TIM3EN);
 		return clocks->apb1_freq;
