@@ -89,11 +89,12 @@ uart_dev get_uart_dev(uint8_t num, uint32_t freq);
   * @param  size: Maximum buffer size.
   * @param  uart_rx_handler_t: Pointer handler function if needed.
   * @param  data: Pointer private data if needed.
+  * @param  stop: Stop marker to detect end of string ('\r' or '\n')
   *
   * @retval none.
   */
 void uart_enable_rx(uart_dev dev, char *buf, uint16_t size,
-	uart_rx_handler_t handler, void *data);
+	uart_rx_handler_t handler, void *data, char stop);
 
 /**
   * @brief  Disable receiving interrupt.

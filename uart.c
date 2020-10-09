@@ -60,6 +60,7 @@ __INLINE static uint16_t UART_BRR_SAMPLING8(uint32_t _PCLK_, uint32_t _BAUD_)
 struct uart_buf_t {
 	struct {
 		char *buf;		/* data will be stored here */
+		char stop_s;		/* end of data marker \r or \n */
 		uint16_t size;		/* maximum buffer size */
 		uint16_t cnt;		/* byte counter */
 		uart_rx_handler_t handler; /* buffer full/new line handler */
@@ -228,7 +229,7 @@ uart_dev get_uart_dev(uint8_t num, uint32_t freq)
 }
 
 void uart_enable_rx(uart_dev dev, char *buf, uint16_t size,
-	uart_rx_handler_t handler, void *data)
+	uart_rx_handler_t handler, void *data, char stop)
 {
 	USART_TypeDef *uart = dev->uart;
 	struct uart_buf_t *b = dev->buffers;
@@ -239,6 +240,7 @@ void uart_enable_rx(uart_dev dev, char *buf, uint16_t size,
 	b->rx.handler = handler;
 	b->rx.data = data;
 	b->rx.error = 0;
+	b->rx.stop_s = stop;
 
 	BIT_SET(uart->CR1, USART_CR1_RE | USART_CR1_RXNEIE);
 }
@@ -322,7 +324,7 @@ static inline void rx_isr(struct uart_buf_t *b, USART_TypeDef *uart)
 
 	b->rx.buf[b->rx.cnt] = data;
 
-	if (b->rx.cnt == b->rx.size || data == '\r') {
+	if (b->rx.cnt == b->rx.size || (b->rx.stop_s && data == b->rx.stop_s)) {
 		if (b->rx.handler)
 			b->rx.handler(b->rx.buf, b->rx.size, b->rx.data);
 		b->rx.cnt = 0;
@@ -429,7 +431,7 @@ uint16_t uart_receive_rtos(uart_dev dev, char *buf, uint16_t size)
 
 	par->handle = xTaskGetCurrentTaskHandle();
 
-	uart_enable_rx(dev, buf, size, rtos_rx_handler, par);
+	uart_enable_rx(dev, buf, size, rtos_rx_handler, par, '\n');
 
 	vTaskSuspend(par->handle);
 
