@@ -59,6 +59,7 @@ struct uart_dev_t;
 typedef const struct uart_dev_t * uart_dev;
 typedef void (*uart_tx_handler_t)(void *buffer);
 typedef void (*uart_rx_handler_t)(char *buffer, uint16_t size, void *data);
+typedef void (*uart_rx_single_byte_t)(char byte);
 
 /**
   * @brief  Lookup for a gpio settings to configure the uart.
@@ -87,7 +88,7 @@ uart_dev get_uart_dev(uint8_t num, uint32_t freq);
   * @param  dev: Pointer to settings struct.
   * @param  buf: Pointer to receiving buffer.
   * @param  size: Maximum buffer size.
-  * @param  uart_rx_handler_t: Pointer handler function if needed.
+  * @param  handler: Pointer to handler function.
   * @param  data: Pointer private data if needed.
   * @param  stop: Stop marker to detect end of string ('\r' or '\n')
   *
@@ -95,6 +96,15 @@ uart_dev get_uart_dev(uint8_t num, uint32_t freq);
   */
 void uart_enable_rx(uart_dev dev, char *buf, uint16_t size,
 	uart_rx_handler_t handler, void *data, char stop);
+
+/**
+  * @brief  Enable receiving interrupt for each individual byte.
+  * @param  dev: Pointer to handler function.
+  * @param  handler: Pointer handler function.
+  *
+  * @retval none.
+  */
+void uart_enable_single_byte_int(uart_dev dev, uart_rx_single_byte_t handler);
 
 /**
   * @brief  Disable receiving interrupt.
@@ -152,10 +162,11 @@ void uart_send_string_rtos(uart_dev dev, char *string);
   * @param  dev: Pointer to settings struct.
   * @param  buf: buffer to send.
   * @param  size: maximum buffer size.
+  * @param  stop: Stop marker to detect end of string ('\r' or '\n')
   *
   * @retval amount of bytes received.
   */
-uint16_t uart_receive_rtos(uart_dev dev, char *buf, uint16_t size);
+uint16_t uart_receive_rtos(uart_dev dev, char *buf, uint16_t size, char stop);
 
 #endif /* FREERTOS */
 

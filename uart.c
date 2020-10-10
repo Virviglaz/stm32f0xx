@@ -66,6 +66,7 @@ struct uart_buf_t {
 		uart_rx_handler_t handler; /* buffer full/new line handler */
 		void *data;		/* private data for generic use */
 		uint32_t error;		/* error flags will be stored here */
+		uart_rx_single_byte_t s_byte_rcv; /* single byte rcv handler */
 	} rx;
 
 	struct {
@@ -115,7 +116,7 @@ static const struct uart_dev_t {
 #if defined (STM32F030xC)
 	{ 5, USART5, GPIOB, BIT(3),  BIT(4),  GPIO_AF4, 0, &bufs[4] },
 	{ 1, USART1, GPIOB, BIT(6),  BIT(7),  GPIO_AF0, 2, &bufs[0] },
-	{ 3, USART3, GPIOB, BIT(9),  BIT(10), GPIO_AF4, 0, &bufs[2] },
+	{ 3, USART3, GPIOB, BIT(10), BIT(11), GPIO_AF4, 0, &bufs[2] },
 	{ 6, USART6, GPIOC, BIT(0),  BIT(1),  GPIO_AF2, 0, &bufs[5] },
 	{ 4, USART4, GPIOC, BIT(10), BIT(11), GPIO_AF0, 0, &bufs[3] },
 	{ 3, USART3, GPIOC, BIT(10), BIT(11), GPIO_AF1, 0, &bufs[2] },
@@ -157,26 +158,27 @@ static uint32_t clock_enable(USART_TypeDef *uart)
 
 static inline int enable_isr(uint8_t uart_num)
 {
-	const enum IRQn irqs[] = { USART1_IRQn, USART2_IRQn,
-#if defined (STM32F072) || (STM32F070xB)
-		USART3_4_IRQn,
-		USART3_4_IRQn,
-#endif
+	switch (uart_num) {
+	case 1:
+		NVIC_EnableIRQ(USART1_IRQn);
+		break;
+	case 2:
+		NVIC_EnableIRQ(USART2_IRQn);
+		break;
+	case 3:
 #if defined (STM32F091)
-		USART3_8_IRQn,
+		NVIC_EnableIRQ(USART3_8_IRQn);
 #endif
 #if defined (STM32F030xC) || defined (STM32F070xB)
-		USART3_6_IRQn,
-		USART3_6_IRQn,
-		USART3_6_IRQn,
-		USART3_6_IRQn,
+		NVIC_EnableIRQ(USART3_6_IRQn);
 #endif
-	};
-
-	if (uart_num >= ARRAY_SIZE(irqs))
+		break;
+	case 6:
+		NVIC_EnableIRQ(USART3_6_IRQn);
+		break;
+	default:
 		return -EINVAL;
-
-	NVIC_EnableIRQ(irqs[uart_num]);
+	}
 
 	return 0;
 }
@@ -198,7 +200,7 @@ static int uart_init(uart_dev dev, uint32_t freq)
 	uart->CR2 = 0;
 	uart->CR3 = 0;
 
-	return enable_isr(dev->index - 1);
+	return enable_isr(dev->index);
 }
 
 uart_dev find_uart_dev(GPIO_TypeDef *gpio, uint16_t pin_mask, uint32_t freq)
@@ -245,9 +247,23 @@ void uart_enable_rx(uart_dev dev, char *buf, uint16_t size,
 	BIT_SET(uart->CR1, USART_CR1_RE | USART_CR1_RXNEIE);
 }
 
+void uart_enable_single_byte_int(uart_dev dev, uart_rx_single_byte_t handler)
+{
+	USART_TypeDef *uart = dev->uart;
+	struct uart_buf_t *b = dev->buffers;
+
+	b->rx.s_byte_rcv = handler;
+
+	BIT_SET(uart->CR1, USART_CR1_RE | USART_CR1_RXNEIE);
+}
+
 void uart_disable_rx(uart_dev dev)
 {
 	USART_TypeDef *uart = dev->uart;
+	struct uart_buf_t *b = dev->buffers;
+
+	b->rx.handler = 0;
+	b->rx.s_byte_rcv = 0;
 
 	BIT_CLR(uart->CR1, USART_CR1_RE | USART_CR1_RXNEIE);
 }
@@ -286,7 +302,6 @@ int uart_send_data(uart_dev dev, char *buf, uint16_t size,
 {
 	USART_TypeDef *uart = dev->uart;
 	struct uart_buf_t *b = dev->buffers;
-	DMA_Channel_TypeDef *ch = 0;
 
 	b->tx.buf = buf;
 	b->tx.size = size;
@@ -294,10 +309,10 @@ int uart_send_data(uart_dev dev, char *buf, uint16_t size,
 	b->tx.handler = handler;
 	b->tx.data = data;
 	b->tx.done = false;
-	if (dev->tx_dma_ch) { /* use DMA */
 #if !defined(UART_NODMA) /* TODO: DMA conflict with SPI */
+	if (dev->tx_dma_ch) { /* use DMA */
+		DMA_Channel_TypeDef *ch;
 		ch = get_dma_ch(dev->tx_dma_ch, tx_handler, b);
-#endif
 		if (ch) {
 			b->tx.dma_ch = dev->tx_dma_ch;
 			BIT_SET(uart->CR3, USART_CR3_DMAT);
@@ -308,6 +323,10 @@ int uart_send_data(uart_dev dev, char *buf, uint16_t size,
 			tx_send(uart, b);
 		}
 	}
+#else
+	BIT_SET(uart->CR1, USART_CR1_TCIE);
+	tx_send(uart, b);
+#endif
 
 	if (!handler) /* hanlder is not provided, wait for finish */
 			while (b->tx.done == false) { }
@@ -323,6 +342,11 @@ int uart_send_string(uart_dev dev, char *buf)
 static inline void rx_isr(struct uart_buf_t *b, USART_TypeDef *uart)
 {
 	char data = uart->RDR;
+
+	if (b->rx.s_byte_rcv) {
+		b->rx.s_byte_rcv(data);
+		return;
+	}
 
 	b->rx.buf[b->rx.cnt] = data;
 
@@ -404,9 +428,9 @@ void uart_send_data_rtos(uart_dev dev, char *buf, uint16_t size)
 	if (!tx_mutex[dev_num])
 		tx_mutex[dev_num] = xSemaphoreCreateMutex();
 
-	handle = xTaskGetCurrentTaskHandle();
-
 	xSemaphoreTake(tx_mutex[dev_num], portMAX_DELAY);
+
+	handle = xTaskGetCurrentTaskHandle();
 
 	if (!uart_send_data(dev, buf, size, rtos_tx_handler, handle))
 		vTaskSuspend(handle);
@@ -419,7 +443,7 @@ void uart_send_string_rtos(uart_dev dev, char *string)
 	uart_send_data_rtos(dev, string, strlen(string));
 }
 
-uint16_t uart_receive_rtos(uart_dev dev, char *buf, uint16_t size)
+uint16_t uart_receive_rtos(uart_dev dev, char *buf, uint16_t size, char stop)
 {
 	const uint8_t dev_num = dev->index - 1;
 	struct params_t *par;
@@ -433,9 +457,11 @@ uint16_t uart_receive_rtos(uart_dev dev, char *buf, uint16_t size)
 
 	par->handle = xTaskGetCurrentTaskHandle();
 
-	uart_enable_rx(dev, buf, size, rtos_rx_handler, par, '\n');
+	uart_enable_rx(dev, buf, size, rtos_rx_handler, par, stop);
 
 	vTaskSuspend(par->handle);
+
+	uart_disable_rx(dev);
 
 	xSemaphoreGive(rx_mutex[dev_num]);
 
