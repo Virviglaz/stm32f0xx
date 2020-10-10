@@ -252,6 +252,7 @@ void uart_disable_rx(uart_dev dev)
 	BIT_CLR(uart->CR1, USART_CR1_RE | USART_CR1_RXNEIE);
 }
 
+#if !defined(UART_NODMA) /* TODO: DMA conflict with SPI */
 static void tx_handler(void *data)
 {
 	struct uart_buf_t *b = data;
@@ -263,6 +264,7 @@ static void tx_handler(void *data)
 
 	b->tx.done = true;
 }
+#endif
 
 static void tx_send(USART_TypeDef *uart, struct uart_buf_t *b)
 {

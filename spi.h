@@ -109,6 +109,17 @@ int spi_write_reg(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
 int spi_read_reg(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
 	uint8_t reg, uint8_t *data, uint16_t size);
 
+/**
+  * @brief  Fast single byte transfer.
+  * @param  dev: pointer to device struct.
+  * @param  gpio: Chip select gpio.
+  * @param  pin: Chip select pin.
+  * @param  n: byte to transfer.
+  *
+  * @retval received byte.
+  */
+uint8_t spi_read_byte(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin, uint8_t b);
+
 #ifdef FREERTOS
 
 /**
@@ -138,6 +149,18 @@ int spi_write_reg_rtos(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
   */
 int spi_read_reg_rtos(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
 	uint8_t reg, uint8_t *data, uint16_t size);
+
+/**
+  * @brief  Fast single byte transfer using RTOS.
+  * @param  dev: pointer to device struct.
+  * @param  gpio: Chip select gpio.
+  * @param  pin: Chip select pin.
+  * @param  n: byte to transfer.
+  *
+  * @retval received byte.
+  */
+uint8_t spi_read_byte_rtos(spi_dev dev, GPIO_TypeDef *gpio,
+	uint16_t pin, uint8_t b);
 
 #endif /* FREERTOS */
 

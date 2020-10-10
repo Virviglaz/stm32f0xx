@@ -392,6 +392,32 @@ int spi_read_reg(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
 		0, data, size, 0, 0);
 }
 
+uint8_t spi_read_byte(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin, uint8_t b)
+{
+	dev->spi->CR2 = (7 << 8) | SPI_CR2_FRXTH;
+
+	BIT_SET(dev->spi->CR1, SPI_CR1_SPE);
+
+	/* chip enable */
+	gpio_clr(gpio, pin);
+
+	/* Loop while DR register in not empty */
+	while (!(dev->spi->SR & SPI_SR_TXE));
+
+	/* Send byte through the SPI peripheral */
+	*((__IO uint8_t *)&dev->spi->DR) = b;
+
+	/* Wait to receive a byte */
+	while (!(dev->spi->SR & SPI_SR_RXNE));
+
+	/* chip disable */
+	gpio_set(gpio, pin);
+
+	BIT_CLR(dev->spi->CR1, SPI_CR1_SPE);
+
+	return *((__IO uint8_t *)&dev->spi->DR);
+}
+
 void SPI1_IRQHandler(void)
 {
 	struct xfer_t *xfer = &xfrs[0];
@@ -423,6 +449,8 @@ static void handler(void *data)
 	rtos_schedule_isr(data);
 }
 
+static SemaphoreHandle_t mutex[NOF_DEVICES] = { 0 };
+
 static int send_message_rtos(
 	spi_dev dev,
 	GPIO_TypeDef *gpio,
@@ -433,7 +461,6 @@ static int send_message_rtos(
 	uint8_t *rx_data,
 	uint16_t size)
 {
-	static SemaphoreHandle_t mutex[NOF_DEVICES] = { 0 };
 	TaskHandle_t handle;
 	int res;
 	uint8_t n = dev->index - 1;
@@ -465,6 +492,24 @@ int spi_read_reg_rtos(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
 	uint8_t reg, uint8_t *data, uint16_t size)
 {
 	return send_message_rtos(dev, gpio, pin, &reg, 1, 0, data, size);
+}
+
+uint8_t spi_read_byte_rtos(spi_dev dev, GPIO_TypeDef *gpio,
+	uint16_t pin, uint8_t b)
+{
+	uint8_t n = dev->index - 1;
+	uint8_t ret;
+
+	if (!mutex[n])
+		mutex[n] = xSemaphoreCreateMutex();
+
+	xSemaphoreTake(mutex[n], portMAX_DELAY);
+
+	ret = spi_read_byte(dev, gpio, pin, b);
+
+	xSemaphoreGive(mutex[n]);
+
+	return ret;
 }
 
 #endif /* FREERTOS */
