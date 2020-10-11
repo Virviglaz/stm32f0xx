@@ -262,10 +262,10 @@ void uart_disable_rx(uart_dev dev)
 	USART_TypeDef *uart = dev->uart;
 	struct uart_buf_t *b = dev->buffers;
 
+	BIT_CLR(uart->CR1, USART_CR1_RE | USART_CR1_RXNEIE);
+
 	b->rx.handler = 0;
 	b->rx.s_byte_rcv = 0;
-
-	BIT_CLR(uart->CR1, USART_CR1_RE | USART_CR1_RXNEIE);
 }
 
 #if !defined(UART_NODMA) /* TODO: DMA conflict with SPI */
@@ -397,9 +397,6 @@ void USART3_6_IRQHandler(void)
 
 #ifdef FREERTOS
 
-static SemaphoreHandle_t tx_mutex[NOF_DEVICES] = { 0 };
-static SemaphoreHandle_t rx_mutex[NOF_DEVICES] = { 0 };
-
 static void rtos_tx_handler(void *data)
 {
 	rtos_schedule_isr(data);
@@ -407,6 +404,9 @@ static void rtos_tx_handler(void *data)
 
 static struct params_t {
 	TaskHandle_t handle;
+	SemaphoreHandle_t tx_mutex;
+	SemaphoreHandle_t rx_mutex;
+	SemaphoreHandle_t rtimeout;
 	uint16_t bytes_received;
 } rcv_params[NOF_DEVICES];
 
@@ -423,19 +423,19 @@ static void rtos_rx_handler(char *buffer, uint16_t size,
 void uart_send_data_rtos(uart_dev dev, char *buf, uint16_t size)
 {
 	TaskHandle_t handle;
-	const uint8_t dev_num = dev->index - 1;
+	uint8_t dev_num = dev->index - 1;
 
-	if (!tx_mutex[dev_num])
-		tx_mutex[dev_num] = xSemaphoreCreateMutex();
+	if (!rcv_params[dev_num].tx_mutex)
+		rcv_params[dev_num].tx_mutex = xSemaphoreCreateMutex();
 
-	xSemaphoreTake(tx_mutex[dev_num], portMAX_DELAY);
+	xSemaphoreTake(rcv_params[dev_num].tx_mutex, portMAX_DELAY);
 
 	handle = xTaskGetCurrentTaskHandle();
 
 	if (!uart_send_data(dev, buf, size, rtos_tx_handler, handle))
 		vTaskSuspend(handle);
 
-	xSemaphoreGive(tx_mutex[dev_num]);
+	xSemaphoreGive(rcv_params[dev_num].tx_mutex);
 }
 
 void uart_send_string_rtos(uart_dev dev, char *string)
@@ -445,13 +445,13 @@ void uart_send_string_rtos(uart_dev dev, char *string)
 
 uint16_t uart_receive_rtos(uart_dev dev, char *buf, uint16_t size, char stop)
 {
-	const uint8_t dev_num = dev->index - 1;
+	uint8_t dev_num = dev->index - 1;
 	struct params_t *par;
 
-	if (!rx_mutex[dev_num])
-		rx_mutex[dev_num] = xSemaphoreCreateMutex();
+	if (!rcv_params[dev_num].rx_mutex)
+		rcv_params[dev_num].rx_mutex = xSemaphoreCreateMutex();
 
-	xSemaphoreTake(rx_mutex[dev_num], portMAX_DELAY);
+	xSemaphoreTake(rcv_params[dev_num].rx_mutex, portMAX_DELAY);
 
 	par = &rcv_params[dev_num];
 
@@ -463,7 +463,44 @@ uint16_t uart_receive_rtos(uart_dev dev, char *buf, uint16_t size, char stop)
 
 	uart_disable_rx(dev);
 
-	xSemaphoreGive(rx_mutex[dev_num]);
+	xSemaphoreGive(rcv_params[dev_num].rx_mutex);
+
+	return par->bytes_received;
+}
+
+static void rtos_rx_timeout_isr(char *buffer, uint16_t size,
+	void *data)
+{
+	struct params_t *par = data;
+
+	par->bytes_received = size;
+
+	xSemaphoreGive(par->rtimeout);
+}
+
+uint16_t uart_receive_by_timeout_rtos(uart_dev dev, char *buf, uint16_t size,
+	uint16_t timeout, char stop)
+{
+	uint8_t dev_num = dev->index - 1;
+	struct params_t *par;
+
+	if (!rcv_params[dev_num].rx_mutex)
+		rcv_params[dev_num].rx_mutex = xSemaphoreCreateMutex();
+
+	if (!rcv_params[dev_num].rtimeout)
+		rcv_params[dev_num].rtimeout = xSemaphoreCreateBinary();
+
+	xSemaphoreTake(rcv_params[dev_num].rx_mutex, portMAX_DELAY);
+
+	par = &rcv_params[dev_num];
+
+	uart_enable_rx(dev, buf, size, rtos_rx_timeout_isr, par, stop);
+
+	xSemaphoreTake(rcv_params[dev_num].rtimeout, timeout);
+
+	uart_disable_rx(dev);
+
+	xSemaphoreGive(rcv_params[dev_num].rx_mutex);
 
 	return par->bytes_received;
 }

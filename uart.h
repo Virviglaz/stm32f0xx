@@ -168,6 +168,19 @@ void uart_send_string_rtos(uart_dev dev, char *string);
   */
 uint16_t uart_receive_rtos(uart_dev dev, char *buf, uint16_t size, char stop);
 
+/**
+  * @brief  Wait for data from uart using RTOS with timeout.
+  * @param  dev: Pointer to settings struct.
+  * @param  buf: buffer to send.
+  * @param  size: maximum buffer size.
+  * @param  timeout: maximum waiting time in RTOS units (i.e. ms)
+  * @param  stop: Stop marker to detect end of string ('\r' or '\n')
+  *
+  * @retval amount of bytes received or 0 if time expired.
+  */
+uint16_t uart_receive_by_timeout_rtos(uart_dev dev, char *buf, uint16_t size,
+	uint16_t timeout, char stop);
+
 #endif /* FREERTOS */
 
 #ifdef __cplusplus
