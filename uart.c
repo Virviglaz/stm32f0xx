@@ -475,7 +475,7 @@ static void rtos_rx_timeout_isr(char *buffer, uint16_t size,
 
 	par->bytes_received = size;
 
-	xSemaphoreGive(par->rtimeout);
+	xSemaphoreGiveFromISR(par->rtimeout, 0);
 }
 
 uint16_t uart_receive_by_timeout_rtos(uart_dev dev, char *buf, uint16_t size,
