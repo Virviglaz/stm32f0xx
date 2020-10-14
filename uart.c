@@ -57,7 +57,8 @@ __INLINE static uint16_t UART_BRR_SAMPLING8(uint32_t _PCLK_, uint32_t _BAUD_)
     return ((Div & ~0x7) << 1 | (Div & 0x07));
 }
 
-struct uart_buf_t {
+/* RAM buffers for UART TX/RX */
+static struct uart_buf_t {
 	struct {
 		char *buf;		/* data will be stored here */
 		char stop_s;		/* end of data marker \r or \n */
@@ -77,13 +78,11 @@ struct uart_buf_t {
 		void *data;		/* private data for generic use */
 		uint8_t dma_ch;		/* number of TX DMA channel used */
 		bool done;		/* set to true when done */
+		bool dma_en;		/* set if dma is enabled */
 	} tx;
-};
+} bufs[NOF_DEVICES] = { 0 };
 
-/* RAM buffers for UART TX/RX */
-static struct uart_buf_t bufs[NOF_DEVICES];
-
-
+/* List of UART devices, connections, dma channels and capabilities */
 static const struct uart_dev_t {
 	uint8_t index;			/* index of uart i.e. 1..6 */
 	USART_TypeDef *uart;		/* pointer to uart base address */
@@ -268,7 +267,6 @@ void uart_disable_rx(uart_dev dev)
 	b->rx.s_byte_rcv = 0;
 }
 
-#if !defined(UART_NODMA) /* TODO: DMA conflict with SPI */
 static void tx_handler(void *data)
 {
 	struct uart_buf_t *b = data;
@@ -280,7 +278,6 @@ static void tx_handler(void *data)
 
 	b->tx.done = true;
 }
-#endif
 
 static void tx_send(USART_TypeDef *uart, struct uart_buf_t *b)
 {
@@ -309,8 +306,7 @@ int uart_send_data(uart_dev dev, char *buf, uint16_t size,
 	b->tx.handler = handler;
 	b->tx.data = data;
 	b->tx.done = false;
-#if !defined(UART_NODMA) /* TODO: DMA conflict with SPI */
-	if (dev->tx_dma_ch) { /* use DMA */
+	if (b->tx.dma_en && dev->tx_dma_ch) { /* use DMA */
 		DMA_Channel_TypeDef *ch;
 		ch = get_dma_ch(dev->tx_dma_ch, tx_handler, b);
 		if (ch) {
@@ -318,15 +314,14 @@ int uart_send_data(uart_dev dev, char *buf, uint16_t size,
 			BIT_SET(uart->CR3, USART_CR3_DMAT);
 			dma_setup(ch, buf, (void *)&uart->TDR, size,
 				DMA_FLAG_MEM2DEV_B);
-		} else { /* use interrupt */
+		} else { /* fall down to use interrupt */
 			BIT_SET(uart->CR1, USART_CR1_TCIE);
 			tx_send(uart, b);
 		}
+	} else { /* dma in not used or not available */
+		BIT_SET(uart->CR1, USART_CR1_TCIE);
+		tx_send(uart, b);
 	}
-#else
-	BIT_SET(uart->CR1, USART_CR1_TCIE);
-	tx_send(uart, b);
-#endif
 
 	if (!handler) /* hanlder is not provided, wait for finish */
 			while (b->tx.done == false) { }
@@ -337,6 +332,13 @@ int uart_send_data(uart_dev dev, char *buf, uint16_t size,
 int uart_send_string(uart_dev dev, char *buf)
 {
 	return uart_send_data(dev, buf, strlen(buf), 0, 0);
+}
+
+void uart_dma(uart_dev dev, bool enable)
+{
+	struct uart_buf_t *b = dev->buffers;
+
+	b->tx.dma_en = enable;
 }
 
 static inline void rx_isr(struct uart_buf_t *b, USART_TypeDef *uart)

@@ -136,6 +136,15 @@ int uart_send_data(uart_dev dev, char *buf, uint16_t size,
   */
 int uart_send_string(uart_dev dev, char *buf);
 
+/**
+  * @brief  Enable/disable DMA for UART TX transfer.
+  * @param  dev: Pointer to settings struct.
+  * @param  enable: true or false to enable or disable the DMA.
+  *
+  * @retval None.
+  */
+void uart_dma(uart_dev dev, bool enable);
+
 #ifdef FREERTOS
 
 /**
