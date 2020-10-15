@@ -77,7 +77,7 @@ static struct uart_buf_t {
 		uart_tx_handler_t handler; /* end of transfer handler */
 		void *data;		/* private data for generic use */
 		uint8_t dma_ch;		/* number of TX DMA channel used */
-		bool done;		/* set to true when done */
+		volatile bool done;	/* set to true when done */
 		bool dma_en;		/* set if dma is enabled */
 	} tx;
 } bufs[NOF_DEVICES] = { 0 };

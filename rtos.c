@@ -87,14 +87,12 @@ void rtos_deferred_isr_init(void (*err_handler)(const char *err),
 
 	isr_queue = xQueueCreate(QUEUE_SIZE, sizeof(TaskHandle_t));
 
-	xTaskCreate(isr_daemon_task, "isr", 64, (void *)timeout, 0, 0);
+	xTaskCreate(isr_daemon_task, "isr", 64, (void *)timeout, 1, 0);
 }
 
 void rtos_schedule_isr(TaskHandle_t handle)
 {
-	BaseType_t hiprio_flag;
-
-	if (xQueueSendFromISR(isr_queue, &handle, &hiprio_flag) != pdTRUE) {
+	if (xQueueSendFromISR(isr_queue, &handle, 0) != pdTRUE) {
 		if (rtos_err_handler)
 			rtos_err_handler("isr_queue overflow");
 		else {
@@ -102,8 +100,6 @@ void rtos_schedule_isr(TaskHandle_t handle)
 			while (1) { }
 		}
 	}
-
-	portYIELD_FROM_ISR(hiprio_flag);
 }
 
 #endif /* FREERTOS */

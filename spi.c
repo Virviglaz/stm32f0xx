@@ -63,7 +63,7 @@ static struct xfer_t {
 	spi_dev dev;			/* pointer to spi device */
 	void (*handler)(void *data);	/* handler function for RTOS */
 	void *data;			/* caller private data */
-	bool done;			/* ready flag */
+	volatile bool done;		/* ready flag */
 	uint16_t cnt;			/* byte counter for isr mode */
 	struct {
 		GPIO_TypeDef *gpio;
