@@ -53,8 +53,6 @@
  * https://www.freertos.org/deferred_interrupt_processing.html
  */
 
-#define QUEUE_SIZE		10
-
 static QueueHandle_t isr_queue = 0;
 static void (*rtos_err_handler)(const char *err);
 static void (*wdt_toggle)(void);
@@ -77,6 +75,7 @@ static void isr_daemon_task(void *par)
 void rtos_deferred_isr_init(void (*err_handler)(const char *err),
 	void (*tickfunc)(void), uint32_t timeout)
 {
+	extern const uint8_t rtos_irq_queue_size;
 	if (isr_queue)
 		return;
 
@@ -85,7 +84,7 @@ void rtos_deferred_isr_init(void (*err_handler)(const char *err),
 	if (!timeout)
 		timeout = portMAX_DELAY;
 
-	isr_queue = xQueueCreate(QUEUE_SIZE, sizeof(TaskHandle_t));
+	isr_queue = xQueueCreate(rtos_irq_queue_size, sizeof(TaskHandle_t));
 
 	xTaskCreate(isr_daemon_task, "isr", 64, (void *)timeout, 1, 0);
 }
