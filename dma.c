@@ -210,7 +210,7 @@ static void handler(void *data)
 	rtos_schedule_isr(data);
 }
 
-static void memcpy_dma(void *dst, const void *src, uint16_t size, uint16_t flag)
+void memcpy_dma(void *dst, const void *src, uint16_t size, uint16_t flag)
 {
 	static SemaphoreHandle_t mutex = 0;
 	DMA_Channel_TypeDef *ch;
