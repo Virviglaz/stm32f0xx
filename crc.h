@@ -42,8 +42,8 @@
  * Pavel Nadein <pavelnadein@gmail.com>
  */
  
-#ifndef __CRC_H__
-#define __CRC_H__
+#ifndef __STM32_CRC_H__
+#define __STM32_CRC_H__
 
 #ifdef __cplusplus
  extern "C" {
@@ -66,5 +66,5 @@ uint32_t crc(void *data, uint32_t size, const uint8_t data_size);
 }
 #endif
 
-#endif /* __CRC_H__ */
+#endif /* __STM32_CRC_H__ */
 
