@@ -61,9 +61,6 @@
 #define malloc(x)			pvPortMalloc(x)
 #define free(x)				vPortFree(x)
 #define free_mem()			xPortGetFreeHeapSize()
-
-#define delay(x)			vTaskDelay(x)
-
 #define MIN_STACK_SIZE			configMINIMAL_STACK_SIZE
 
 /**
