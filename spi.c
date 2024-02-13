@@ -4,7 +4,7 @@
  *
  * MIT License
  *
- * Copyright (c) 2020 Pavel Nadein
+ * Copyright (c) 2020-2024 Pavel Nadein
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -443,13 +443,16 @@ void SPI2_IRQHandler(void)
 }
 
 #ifdef FREERTOS
-
-static void handler(void *data)
+#include "FreeRTOS.h"
+#include "semphr.h"
+static void handler(void *arg)
 {
-	rtos_schedule_isr(data);
+	SemaphoreHandle_t done = (SemaphoreHandle_t)arg;
+	xSemaphoreGive(done);
 }
 
-static SemaphoreHandle_t mutex[NOF_DEVICES] = { 0 };
+static SemaphoreHandle_t lock[NOF_DEVICES] = { 0 };
+static SemaphoreHandle_t done[NOF_DEVICES] = { 0 };
 
 static int send_message_rtos(
 	spi_dev dev,
@@ -461,23 +464,22 @@ static int send_message_rtos(
 	uint8_t *rx_data,
 	uint16_t size)
 {
-	TaskHandle_t handle;
 	int res;
 	uint8_t n = dev->index - 1;
 
-	if (!mutex[n])
-		mutex[n] = xSemaphoreCreateMutex();
+	if (!lock[n]) {
+		lock[n] = xSemaphoreCreateMutex();
+		done[n] = xSemaphoreCreateBinary();
+	}
 
-	xSemaphoreTake(mutex[n], portMAX_DELAY);
-
-	handle = xTaskGetCurrentTaskHandle();
+	xSemaphoreTake(lock[n], portMAX_DELAY);
 
 	res = send_message(dev, gpio, pin, reg, reg_size,
-		tx_data, rx_data, size, handler, handle);
+		tx_data, rx_data, size, handler, (void *)done[n]);
 	if (!res)
-		vTaskSuspend(handle);
+		xSemaphoreTake(done[n], portMAX_DELAY);
 
-	xSemaphoreGive(mutex[n]);
+	xSemaphoreGive(lock[n]);
 
 	return res;
 }
@@ -500,14 +502,16 @@ uint8_t spi_read_byte_rtos(spi_dev dev, GPIO_TypeDef *gpio,
 	uint8_t n = dev->index - 1;
 	uint8_t ret;
 
-	if (!mutex[n])
-		mutex[n] = xSemaphoreCreateMutex();
+	if (!lock[n]) {
+		lock[n] = xSemaphoreCreateMutex();
+		done[n] = xSemaphoreCreateBinary();
+	}
 
-	xSemaphoreTake(mutex[n], portMAX_DELAY);
+	xSemaphoreTake(lock[n], portMAX_DELAY);
 
 	ret = spi_read_byte(dev, gpio, pin, b);
 
-	xSemaphoreGive(mutex[n]);
+	xSemaphoreGive(lock[n]);
 
 	return ret;
 }

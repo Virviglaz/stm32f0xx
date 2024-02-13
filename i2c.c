@@ -4,7 +4,7 @@
  *
  * MIT License
  *
- * Copyright (c) 2020 Pavel Nadein
+ * Copyright (c) 2020-2024 Pavel Nadein
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -49,6 +49,16 @@
 #include <stdbool.h>
 
 #define NOF_DEVICES			2 /*< I2C1 & I2C2 */
+
+#ifdef FREERTOS
+#include "FreeRTOS.h"
+#include "semphr.h"
+static struct rtos_task_t {
+	SemaphoreHandle_t done;
+	SemaphoreHandle_t lock;
+	uint8_t err;
+} rtos_i2c_dev_param[NOF_DEVICES];
+#endif
 
 /* task and error reporting */
 enum task_t {
@@ -149,6 +159,11 @@ static int init(i2c_dev dev, bool fast_mode)
 	gpio_alt_func_init(dev->gpio, dev->sda, dev->alt_func);
 
 	i2c->TIMINGR = timings;
+
+#ifdef FREERTOS
+	rtos_i2c_dev_param[dev->index - 1].done = xSemaphoreCreateBinary();
+	rtos_i2c_dev_param[dev->index - 1].lock = xSemaphoreCreateMutex();
+#endif
 
 	return 0;
 }
@@ -370,67 +385,68 @@ void I2C2_IRQHandler(void)
 }
 
 #ifdef FREERTOS
-
-struct rtos_task_t {
-	void *task_handle;
-	uint8_t err;
-};
-
-static void rtos_handler(void *task, uint8_t err)
+static void rtos_handler(void *arg, uint8_t err)
 {
-	struct rtos_task_t *param = task;
+	struct rtos_task_t *param = (struct rtos_task_t *)arg;
 
 	param->err = err;
 
-	rtos_schedule_isr(param->task_handle);
+	xSemaphoreGiveFromISR(param->done, 0);
 }
 
-/*
- * this is rtos oriented i2c function. During the transfer the task is put
- * on hold and not using a cpu time. When transfer is finished the task
- * handler is reported to isr daemon resulting deferred interrupt technics.
- * isr daemon is waiking up calling task and execution of code continues.
- */
-static int rw_reg8_rtos(i2c_dev dev, uint8_t addr, uint8_t *reg,
-	uint8_t reg_size, uint8_t *data, uint16_t size, enum dir_t dir)
+static int rw_reg8_rtos(i2c_dev dev,
+			uint8_t addr,
+			uint8_t *reg,
+			uint8_t reg_size,
+			uint8_t *data,
+			uint16_t size,
+			enum dir_t dir,
+			uint32_t timeout_ms)
 {
-	int res;
-	struct rtos_task_t params;
-	static SemaphoreHandle_t mutex[NOF_DEVICES] = { 0 };
 	uint8_t num = dev->index - 1;
+	struct rtos_task_t *params = &rtos_i2c_dev_param[num];
+	int res = 0;
 
-	if (!mutex[num])
-		mutex[num] = xSemaphoreCreateMutex();
+	if (xSemaphoreTake(params->lock, portMAX_DELAY) == pdTRUE) {
+		xSemaphoreTake(params->done, 0); /* clear */
+		res = send_message(dev, addr, reg, reg_size, data, size, dir,
+			rtos_handler, &params);
 
-	xSemaphoreTake(mutex[num], portMAX_DELAY);
+		if (!res) {
+			if (xSemaphoreTake(params->done,
+				timeout_ms ? pdMS_TO_TICKS(timeout_ms) : portMAX_DELAY) != pdTRUE)
+				res = EINVAL;
+		}
+	}
 
-	params.task_handle = xTaskGetCurrentTaskHandle();
-
-	res = send_message(dev, addr, reg, reg_size, data, size, dir,
-		rtos_handler, &params);
-	if (!res)
-		vTaskSuspend(params.task_handle);
-
-	xSemaphoreGive(mutex[num]);
+	xSemaphoreGive(params->lock);
 
 	if (res)
 		return res;
 
-	return -params.err;
+	return params->err;
 }
 
-int i2c_write_reg_rtos(i2c_dev dev, uint8_t addr, uint8_t reg,
-	uint8_t *data, uint16_t size)
+int i2c_write_reg_rtos(i2c_dev dev,
+		       uint8_t addr,
+		       uint8_t reg,
+		       uint8_t *data,
+		       uint16_t size,
+		       uint32_t timeout_ms)
 {
 	return rw_reg8_rtos(dev, addr, &reg, sizeof(reg),
-		data, size, WRITING);
+		data, size, WRITING, timeout_ms);
 }
 
-int i2c_read_reg_rtos(i2c_dev dev, uint8_t addr, uint8_t reg,
-	uint8_t *data, uint16_t size)
+int i2c_read_reg_rtos(i2c_dev dev,
+		      uint8_t addr,
+		      uint8_t reg,
+		      uint8_t *data,
+		      uint16_t size,
+		      uint32_t timeout_ms)
 {
 	return rw_reg8_rtos(dev, addr, &reg, sizeof(reg),
-		data, size, READING);
+		data, size, READING, timeout_ms);
 }
 
 #endif /* FREERTOS */

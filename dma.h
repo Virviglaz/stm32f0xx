@@ -4,7 +4,7 @@
  *
  * MIT License
  *
- * Copyright (c) 2020 Pavel Nadein
+ * Copyright (c) 2020-2024 Pavel Nadein
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -51,7 +51,6 @@
 
 #include <stm32f0xx.h>
 #include <stdint.h>
-#include "rtos.h"
 
 /* device to memory and back */
 #define DMA_FLAG_DEV2MEM_B	(DMA_CCR_MINC | DMA_CCR_TCIE | DMA_CCR_EN)

@@ -4,7 +4,7 @@
  *
  * MIT License
  *
- * Copyright (c) 2020 Pavel Nadein
+ * Copyright (c) 2020-2024 Pavel Nadein
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -42,11 +42,10 @@
  * Pavel Nadein <pavelnadein@gmail.com>
  */
 
-#include "rcc.h"
-#include "dma.h"
-#include "uart.h"
 #include <errno.h>
-#include <string.h>
+#include <stdbool.h>
+#include "rcc.h"
+#include "uart.h"
 
 #define NOF_DEVICES			6 /*< USART1..USART6 */
 #define UART(x)		(void *)uarts[(x) - 1]
@@ -57,97 +56,74 @@ __INLINE static uint16_t UART_BRR_SAMPLING8(uint32_t _PCLK_, uint32_t _BAUD_)
     return ((Div & ~0x7) << 1 | (Div & 0x07));
 }
 
-/* RAM buffers for UART TX/RX */
-static struct uart_buf_t {
-	struct {
-		char *buf;		/* data will be stored here */
-		char stop_s;		/* end of data marker \r or \n */
-		uint16_t size;		/* maximum buffer size */
-		uint16_t cnt;		/* byte counter */
-		uart_rx_handler_t handler; /* buffer full/new line handler */
-		void *data;		/* private data for generic use */
-		uint32_t error;		/* error flags will be stored here */
-		uart_rx_single_byte_t s_byte_rcv; /* single byte rcv handler */
-	} rx;
-
-	struct {
-		char *buf;		/* data will be taken from here */
-		uint16_t size;		/* amount of bytes to transfer */
-		uint16_t cnt;		/* byte counter */
-		uart_tx_handler_t handler; /* end of transfer handler */
-		void *data;		/* private data for generic use */
-		uint8_t dma_ch;		/* number of TX DMA channel used */
-		volatile bool done;	/* set to true when done */
-		bool dma_en;		/* set if dma is enabled */
-	} tx;
-} bufs[NOF_DEVICES] = { 0 };
-
 /* List of UART devices, connections, dma channels and capabilities */
-static const struct uart_dev_t {
+static const struct uart_periph_dev {
 	uint8_t index;			/* index of uart i.e. 1..6 */
-	USART_TypeDef *uart;		/* pointer to uart base address */
 	GPIO_TypeDef *gpio;		/* pointer to gpio base address */
 	uint16_t tx_pin;		/* tx pin bit mask BIT(x) */
 	uint16_t rx_pin;		/* rx pin bit mask BIT(x) */
 	enum gpio_alt_t alt_func;	/* alt function index GPIO_AF0..7 */
-	uint8_t tx_dma_ch;		/* TX dma channel or 0 if not used */
-	struct uart_buf_t *buffers;	/* pointer to allocated RAM buffers */
-} devices[] = {
+	IRQn_Type irq;
+} uart_periph_devices[] = {
 #if defined (STM32F030xC)
-	{ 4, USART4, GPIOA, BIT(0),  BIT(1),  GPIO_AF4, 0, &bufs[3] },
+	{ 4, GPIOA, BIT(0),  BIT(1),  GPIO_AF4,	0 },
 #endif
 #if defined (STM32F030X4) || defined (STM32F030X6)
-	{ 1, USART1, GPIOA, BIT(2),  BIT(2),  GPIO_AF1, 2, &bufs[0] },
+	{ 1, GPIOA, BIT(2),  BIT(2),  GPIO_AF1, USART1_IRQn },
 #endif
 #if defined (STM32F030xC) || defined (STM32F030X8)
-	{ 6, USART6, GPIOA, BIT(2),  BIT(2),  GPIO_AF1, 0, &bufs[5] },
+	{ 6, GPIOA, BIT(2),  BIT(2),  GPIO_AF1, USART3_6_IRQn },
 #endif
 #if defined (STM32F030xC)
-	{ 6, USART6, GPIOA, BIT(4),  BIT(5),  GPIO_AF5, 0, &bufs[5] },
+	{ 6, GPIOA, BIT(4),  BIT(5),  GPIO_AF5, USART3_6_IRQn },
 #endif
-	{ 1, USART1, GPIOA, BIT(9),  BIT(10), GPIO_AF1, 2, &bufs[0] },
+	{ 1, GPIOA, BIT(9),  BIT(10), GPIO_AF1, USART1_IRQn },
 #if defined (STM32F030X4) || defined (STM32F030X6)
-	{ 1, USART1, GPIOA, BIT(14), BIT(15), GPIO_AF1, &bufs[0] },
+	{ 1, GPIOA, BIT(14), BIT(15), GPIO_AF1, USART1_IRQn },
 #endif
 #if defined (STM32F030xC) || defined (STM32F030X8)
-	{ 2, USART2, GPIOA, BIT(14), BIT(15), GPIO_AF1, 4, &bufs[1] },
+	{ 2, GPIOA, BIT(14), BIT(15), GPIO_AF1, USART2_IRQn },
 #endif
 #if defined (STM32F030xC)
-	{ 5, USART5, GPIOB, BIT(3),  BIT(4),  GPIO_AF4, 0, &bufs[4] },
-	{ 1, USART1, GPIOB, BIT(6),  BIT(7),  GPIO_AF0, 2, &bufs[0] },
-	{ 3, USART3, GPIOB, BIT(10), BIT(11), GPIO_AF4, 0, &bufs[2] },
-	{ 6, USART6, GPIOC, BIT(0),  BIT(1),  GPIO_AF2, 0, &bufs[5] },
-	{ 4, USART4, GPIOC, BIT(10), BIT(11), GPIO_AF0, 0, &bufs[3] },
-	{ 3, USART3, GPIOC, BIT(10), BIT(11), GPIO_AF1, 0, &bufs[2] },
+	{ 5, GPIOB, BIT(3),  BIT(4),  GPIO_AF4, 0 },
+	{ 1, GPIOB, BIT(6),  BIT(7),  GPIO_AF0, USART1_IRQn },
+	{ 3, GPIOB, BIT(10), BIT(11), GPIO_AF4, USART3_6_IRQn },
+	{ 6, GPIOC, BIT(0),  BIT(1),  GPIO_AF2, USART3_6_IRQn },
+	{ 4, GPIOC, BIT(10), BIT(11), GPIO_AF0,	0 },
+	{ 3, GPIOC, BIT(10), BIT(11), GPIO_AF1, USART3_6_IRQn },
 #endif
 };
 
-static uint32_t clock_enable(USART_TypeDef *uart)
+/* Local storage for interrupt mapping */
+static uart_dev_t *uart_devices[NOF_DEVICES];
+
+static inline uint32_t clock_enable(uint8_t uart_num)
 {
 	struct system_clock_t *clocks = get_clocks();
 
-	if (uart == USART1) {
+	switch (uart_num) {
+	case 1:
 		BIT_SET(RCC->APB2ENR, RCC_APB2ENR_USART1EN);
 		return clocks->apb2_freq;
-	} else if (uart == USART2) {
+	case 2:
 		BIT_SET(RCC->APB1ENR, RCC_APB1ENR_USART2EN);
 		return clocks->apb1_freq;
-	} else if (uart == USART3) {
+	case 3:
 		BIT_SET(RCC->APB1ENR, RCC_APB1ENR_USART3EN);
 		return clocks->apb1_freq;
-	} else if (uart == USART4) {
+	case 4:
 		BIT_SET(RCC->APB1ENR, RCC_APB1ENR_USART4EN);
 		return clocks->apb1_freq;
-	} else if (uart == USART5) {
+	case 5:
 		BIT_SET(RCC->APB1ENR, RCC_APB1ENR_USART5EN);
 		return clocks->apb1_freq;
-	} else if (uart == USART6) {
+	case 6:
 		BIT_SET(RCC->APB2ENR, RCC_APB2ENR_USART6EN);
 		return clocks->apb2_freq;
-	} else if (uart == USART7) {
+	case 7:
 		BIT_SET(RCC->APB2ENR, RCC_APB2ENR_USART7EN);
 		return clocks->apb2_freq;
-	} else if (uart == USART8) {
+	case 8:
 		BIT_SET(RCC->APB2ENR, RCC_APB2ENR_USART8EN);
 		return clocks->apb2_freq;
 	}
@@ -155,356 +131,278 @@ static uint32_t clock_enable(USART_TypeDef *uart)
 	return 0;
 }
 
-static inline int enable_isr(uint8_t uart_num)
+static void send_byte(uart_dev_t *dev)
 {
-	switch (uart_num) {
-	case 1:
-		NVIC_EnableIRQ(USART1_IRQn);
-		break;
-	case 2:
-		NVIC_EnableIRQ(USART2_IRQn);
-		break;
-	case 3:
-#if defined (STM32F091)
-		NVIC_EnableIRQ(USART3_8_IRQn);
-#endif
-#if defined (STM32F030xC) || defined (STM32F070xB)
-		NVIC_EnableIRQ(USART3_6_IRQn);
-#endif
-		break;
-	case 6:
-		NVIC_EnableIRQ(USART3_6_IRQn);
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-static int uart_init(uart_dev dev, uint32_t freq)
-{
-	USART_TypeDef *uart = dev->uart;
-	uint32_t clock_source = clock_enable(uart);
-
-	if (!uart || !clock_source)
-		return -EINVAL;
-
-	gpio_alt_func_init(dev->gpio, dev->tx_pin, dev->alt_func);
-	gpio_alt_func_init(dev->gpio, dev->rx_pin, dev->alt_func);
-
-	uart->BRR = UART_BRR_SAMPLING8(clock_source, freq);
-	uart->CR1 = USART_CR1_UE | USART_CR1_TE;
-
-	uart->CR2 = 0;
-	uart->CR3 = 0;
-
-	return enable_isr(dev->index);
-}
-
-uart_dev find_uart_dev(GPIO_TypeDef *gpio, uint16_t pin_mask, uint32_t freq)
-{
-	uint8_t i;
-
-	for (i = 0; i != ARRAY_SIZE(devices); i++) {
-		uart_dev dev = &devices[i];
-		if (dev->gpio == gpio)
-			if (dev->tx_pin & pin_mask || dev->rx_pin & pin_mask)
-				return uart_init(dev, freq) ? 0 : dev;
-	}
-
-	return 0; /* no devices found */
-}
-
-uart_dev get_uart_dev(uint8_t num, uint32_t freq)
-{
-	uint8_t i;
-
-	for (i = 0; i != ARRAY_SIZE(devices); i++) {
-		uart_dev dev = &devices[i];
-		if (dev->index == num)
-			return uart_init(dev, freq) ? 0 : dev;
-	}
-
-	return 0; /* no devices found */
-}
-
-void uart_enable_rx(uart_dev dev, char *buf, uint16_t size,
-	uart_rx_handler_t handler, void *data, char stop)
-{
-	USART_TypeDef *uart = dev->uart;
-	struct uart_buf_t *b = dev->buffers;
-
-	b->rx.buf = buf;
-	b->rx.size = size - 1;
-	b->rx.cnt = 0;
-	b->rx.handler = handler;
-	b->rx.data = data;
-	b->rx.error = 0;
-	b->rx.stop_s = stop;
-
-	BIT_SET(uart->CR1, USART_CR1_RE | USART_CR1_RXNEIE);
-}
-
-void uart_enable_single_byte_int(uart_dev dev, uart_rx_single_byte_t handler)
-{
-	USART_TypeDef *uart = dev->uart;
-	struct uart_buf_t *b = dev->buffers;
-
-	b->rx.s_byte_rcv = handler;
-
-	BIT_SET(uart->CR1, USART_CR1_RE | USART_CR1_RXNEIE);
-}
-
-void uart_disable_rx(uart_dev dev)
-{
-	USART_TypeDef *uart = dev->uart;
-	struct uart_buf_t *b = dev->buffers;
-
-	BIT_CLR(uart->CR1, USART_CR1_RE | USART_CR1_RXNEIE);
-
-	b->rx.handler = 0;
-	b->rx.s_byte_rcv = 0;
-}
-
-static void tx_handler(void *data)
-{
-	struct uart_buf_t *b = data;
-
-	dma_release(b->tx.dma_ch);
-
-	if (b->tx.handler)
-		b->tx.handler(b->tx.data);
-
-	b->tx.done = true;
-}
-
-static void tx_send(USART_TypeDef *uart, struct uart_buf_t *b)
-{
-	if (b->tx.cnt == b->tx.size) {
-		BIT_CLR(uart->CR1, USART_CR1_TCIE);
-		BIT_CLR(uart->CR3, USART_CR3_DMAT);
-		if (b->tx.handler)
-			b->tx.handler(b->tx.data);
-		b->tx.done = true;
+	/* all data send out, call handler */
+	if (dev->buffers.tx.cnt == dev->buffers.tx.size) {
+		BIT_CLR(dev->base->CR1, USART_CR1_TCIE);
+		BIT_CLR(dev->base->CR3, USART_CR3_DMAT);
+		if (dev->buffers.tx.handler)
+			dev->buffers.tx.handler(dev->buffers.tx.data,
+			dev->buffers.tx.cnt,
+			dev->buffers.tx.data);
+		dev->buffers.tx.done = true;
 		return;
 	}
 
-	uart->TDR = b->tx.buf[b->tx.cnt];
-	b->tx.cnt++;
+	/* send next byte */
+	dev->base->TDR = dev->buffers.tx.buf[dev->buffers.tx.cnt];
+	dev->buffers.tx.cnt++;
 }
 
-int uart_send_data(uart_dev dev, char *buf, uint16_t size,
-	uart_tx_handler_t handler, void *data)
+static inline void rx_isr(uart_dev_t *dev)
 {
-	USART_TypeDef *uart = dev->uart;
-	struct uart_buf_t *b = dev->buffers;
+	char data = dev->base->RDR;
+	bool done = false;
 
-	b->tx.buf = buf;
-	b->tx.size = size;
-	b->tx.cnt = 0;
-	b->tx.handler = handler;
-	b->tx.data = data;
-	b->tx.done = false;
-	if (b->tx.dma_en && dev->tx_dma_ch) { /* use DMA */
-		DMA_Channel_TypeDef *ch;
-		ch = get_dma_ch(dev->tx_dma_ch, tx_handler, b);
-		if (ch) {
-			b->tx.dma_ch = dev->tx_dma_ch;
-			BIT_SET(uart->CR3, USART_CR3_DMAT);
-			dma_setup(ch, buf, (void *)&uart->TDR, size,
-				DMA_FLAG_MEM2DEV_B);
-		} else { /* fall down to use interrupt */
-			BIT_SET(uart->CR1, USART_CR1_TCIE);
-			tx_send(uart, b);
-		}
-	} else { /* dma in not used or not available */
-		BIT_SET(uart->CR1, USART_CR1_TCIE);
-		tx_send(uart, b);
-	}
-
-	if (!handler) /* hanlder is not provided, wait for finish */
-			while (b->tx.done == false) { }
-
-	return 0;
-}
-
-int uart_send_string(uart_dev dev, char *buf)
-{
-	return uart_send_data(dev, buf, strlen(buf), 0, 0);
-}
-
-void uart_dma(uart_dev dev, bool enable)
-{
-	struct uart_buf_t *b = dev->buffers;
-
-	b->tx.dma_en = enable;
-}
-
-static inline void rx_isr(struct uart_buf_t *b, USART_TypeDef *uart)
-{
-	char data = uart->RDR;
-
-	if (b->rx.s_byte_rcv) {
-		b->rx.s_byte_rcv(data);
+	if (dev->buffers.rx.s_byte_rcv) {
+		dev->buffers.rx.s_byte_rcv(data);
 		return;
 	}
 
-	b->rx.buf[b->rx.cnt] = data;
+	dev->buffers.rx.buf[dev->buffers.rx.cnt] = data;
 
-	if (b->rx.cnt == b->rx.size || (b->rx.stop_s && data == b->rx.stop_s)) {
-		if (b->rx.handler)
-			b->rx.handler(b->rx.buf, b->rx.size, b->rx.data);
-		b->rx.cnt = 0;
+	if (dev->buffers.rx.stop > 0 && data == dev->buffers.rx.stop)
+		done = true;
+
+	if (dev->buffers.rx.cnt == dev->buffers.rx.size)
+		done = true;
+	
+	if (done) {
+		if (dev->buffers.rx.handler)
+			dev->buffers.rx.handler(dev->buffers.rx.buf,
+				dev->buffers.rx.size,
+				dev->buffers.rx.data);
+		dev->buffers.rx.cnt = 0;
+		dev->buffers.rx.done = true;
 		return;
 	}
 
-	b->rx.cnt++;
+	dev->buffers.rx.cnt++;
 }
 
-static void isr(USART_TypeDef *uart, uint8_t uart_num, uint32_t flag)
+static void isr(uint8_t uart_num)
 {
-	struct uart_buf_t *b = &bufs[uart_num - 1];
+	uart_dev_t *dev = uart_devices[uart_num - 1];
+	uint32_t status = dev->base->ISR;
 
 	/* receive interrupt */
-	if (flag & USART_ISR_RXNE)
-		rx_isr(b, uart);
+	if (status & USART_ISR_RXNE)
+		rx_isr(dev);
 
-	/* OverRun Error */
-	if (flag & USART_ISR_ORE) {
-		b->rx.error |= USART_ISR_ORE;
-		uart->ICR = USART_ICR_ORECF;
+	/* overrin error */
+	if (status & USART_ISR_ORE) {
+		dev->buffers.rx.error |= USART_ISR_ORE;
+		dev->base->ICR = USART_ICR_ORECF;
 	}
 
-	/* transmitting using ISR */
-	if (flag * USART_ISR_TXE)
-		tx_send(uart, b);
+	/* transmit interrupt */
+	if (status & USART_ISR_TXE)
+		send_byte(dev);
+}
+
+
+/**************** PUBLIC INTERFACE FUNCIONS ****************/
+int uart_init(uart_dev_t *dev,
+	      uint8_t uart_num,
+	      uint16_t tx_pin,
+	      uint16_t rx_pin,
+	      uint32_t freq)
+{
+	const struct uart_periph_dev *uart_periph = 0;
+	USART_TypeDef *uarts[] = { USART1, USART2, USART3, USART4, USART5, USART6 }; 
+
+	/* Use lookup table to find a desired peripheral usart device */
+	for (int i = 0; i != ARRAY_SIZE(uart_periph_devices); i++) {
+		if (	uart_periph_devices[i].index == uart_num &&
+			uart_periph_devices[i].tx_pin == tx_pin &&
+			uart_periph_devices[i].rx_pin == rx_pin) {
+			uart_periph = &uart_periph_devices[i];
+			break;
+		}
+	}
+
+	if (!uart_periph)
+		return EINVAL;
+
+	dev->uart_periph = uart_periph;
+	dev->base = uarts[uart_num - 1];
+
+	gpio_alt_func_init(uart_periph->gpio, uart_periph->tx_pin, uart_periph->alt_func);
+	gpio_alt_func_init(uart_periph->gpio, uart_periph->rx_pin, uart_periph->alt_func);
+
+	dev->base->BRR = UART_BRR_SAMPLING8(clock_enable(uart_num), freq);
+	dev->base->CR1 = USART_CR1_UE | USART_CR1_TE;
+	dev->base->CR2 = 0;
+	dev->base->CR3 = 0;
+
+	if (uart_periph->irq)
+		NVIC_EnableIRQ(uart_periph->irq);
+
+	/* save for interrupt mapping */
+	uart_devices[uart_num - 1] = dev;
+
+#ifdef FREERTOS
+	dev->buffers.tx.slock = xSemaphoreCreateMutex();
+	dev->buffers.rx.slock = xSemaphoreCreateMutex();
+	dev->buffers.tx.sdone = xSemaphoreCreateBinary();
+	dev->buffers.rx.sdone = xSemaphoreCreateBinary();
+#endif
+	return 0;
+}
+
+void uart_enable_rx_multi(uart_dev_t *dev,
+			  char *dst,
+			  uint16_t size,
+			  uart_handler_t handler,
+			  void *data,
+			  int stop)
+{
+	dev->buffers.rx.buf = dst;
+	dev->buffers.rx.size = size - 1;
+	dev->buffers.rx.cnt = 0;
+	dev->buffers.rx.s_byte_rcv = 0;
+	dev->buffers.rx.handler = handler;
+	dev->buffers.rx.data = data;
+	dev->buffers.rx.error = 0;
+	dev->buffers.rx.done = true;
+	dev->buffers.rx.stop = stop;
+
+	BIT_SET(dev->base->CR1, USART_CR1_RE | USART_CR1_RXNEIE);
+}
+
+void uart_enable_rx_single(uart_dev_t *dev, uart_rx_single_byte_t handler)
+{
+	dev->buffers.rx.s_byte_rcv = handler;
+	dev->buffers.rx.handler = 0;
+
+	BIT_SET(dev->base->CR1, USART_CR1_RE | USART_CR1_RXNEIE);
+}
+
+void uart_disable_rx(uart_dev_t *dev)
+{
+	BIT_CLR(dev->base->CR1, USART_CR1_RE | USART_CR1_RXNEIE);
+	dev->buffers.rx.handler = 0;
+	dev->buffers.rx.s_byte_rcv = 0;
+}
+
+uint16_t uart_send(uart_dev_t *dev,
+		   char *src,
+		   uint16_t size,
+		   uart_handler_t handler,
+		   void *data)
+{
+	dev->buffers.tx.buf = src;
+	dev->buffers.tx.size = size;
+	dev->buffers.tx.cnt = 0;
+	dev->buffers.tx.handler = handler;
+	dev->buffers.tx.data = data;
+	dev->buffers.tx.done = false;
+
+	BIT_SET(dev->base->CR1, USART_CR1_TCIE);
+	send_byte(dev);
+
+	/* handler is not provided, wait for finish */
+	if (!handler)
+		while (!dev->buffers.tx.done) { }
+	else
+		return 0; /* not waiting */
+
+	return dev->buffers.tx.cnt;
+}
+
+void uart_wait_tx_done(uart_dev_t *dev)
+{
+	while (!dev->buffers.tx.done) { }
+}
+
+uint32_t uart_check_rx_error(uart_dev_t *dev)
+{
+	uint32_t ret = dev->buffers.rx.error;
+	dev->buffers.rx.error = 0;
+	return ret;
+}
+
+uint16_t uart_get_send_bytes(uart_dev_t *dev)
+{
+	return dev->buffers.tx.cnt;
+}
+
+uint16_t uart_get_recv_bytes(uart_dev_t *dev)
+{
+	return dev->buffers.rx.cnt;
 }
 
 void USART1_IRQHandler(void)
 {
-	isr(USART1, 1, USART1->ISR);
+	isr(1);
 }
 
 void USART2_IRQHandler(void)
 {
-	isr(USART2, 2, USART2->ISR);
+	isr(2);
 }
 
 void USART3_6_IRQHandler(void)
 {
-	isr(USART3, 3, USART3->ISR);
-	isr(USART6, 6, USART6->ISR);
+	isr(3);
+	isr(6);
 }
 
 #ifdef FREERTOS
-
-static void rtos_tx_handler(void *data)
+static void rtos_handler(char *buffer, uint16_t size, void *arg)
 {
-	rtos_schedule_isr(data);
+	SemaphoreHandle_t done = (SemaphoreHandle_t)arg;
+	xSemaphoreGiveFromISR(done, 0);
 }
 
-static struct params_t {
-	TaskHandle_t handle;
-	SemaphoreHandle_t tx_mutex;
-	SemaphoreHandle_t rx_mutex;
-	SemaphoreHandle_t rtimeout;
-	uint16_t bytes_received;
-} rcv_params[NOF_DEVICES];
-
-static void rtos_rx_handler(char *buffer, uint16_t size,
-	void *data)
+uint16_t uart_send_rtos(uart_dev_t *dev,
+			char *src,
+			uint16_t size,
+			uint32_t timeout_ms)
 {
-	struct params_t *par = data;
+	uint16_t ret = 0;
 
-	par->bytes_received = size;
+	/* obtain lock */
+	if (xSemaphoreTake(dev->buffers.tx.slock, portMAX_DELAY) == pdTRUE) {
+		xSemaphoreTake(dev->buffers.tx.sdone, 0); /* clear semaphore */
+		ret = uart_send(dev, src, size, rtos_handler, (void *)dev->buffers.tx.sdone);
 
-	rtos_schedule_isr(par->handle);
+		/* wait for data to be send out */
+		if (xSemaphoreTake(dev->buffers.tx.sdone, timeout_ms ? pdMS_TO_TICKS(timeout_ms) : portMAX_DELAY) == pdTRUE)
+			ret = dev->buffers.tx.cnt;
+
+		xSemaphoreGive(dev->buffers.tx.slock);
+	} else {
+		return 0; /* lock timeout */
+	}
+
+	return ret;
 }
 
-void uart_send_data_rtos(uart_dev dev, char *buf, uint16_t size)
+uint16_t uart_receive_rtos(uart_dev_t *dev,
+			   char *dst,
+			   uint16_t size,
+			   uint32_t timeout_ms,
+			   int stop)
 {
-	TaskHandle_t handle;
-	uint8_t dev_num = dev->index - 1;
+	uint16_t ret = 0;
 
-	if (!rcv_params[dev_num].tx_mutex)
-		rcv_params[dev_num].tx_mutex = xSemaphoreCreateMutex();
+	/* obtain lock */
+	if (xSemaphoreTake(dev->buffers.rx.slock, portMAX_DELAY) == pdTRUE) {
+		xSemaphoreTake(dev->buffers.rx.sdone, 0); /* clear semaphore */
+		uart_enable_rx_multi(dev, dst, size, rtos_handler, (void *)dev->buffers.rx.sdone, stop);
 
-	xSemaphoreTake(rcv_params[dev_num].tx_mutex, portMAX_DELAY);
+		/* wait for data to be received */
+		if (xSemaphoreTake(dev->buffers.rx.sdone, timeout_ms ? pdMS_TO_TICKS(timeout_ms) : portMAX_DELAY) == pdTRUE)
+			ret = dev->buffers.rx.cnt;
 
-	handle = xTaskGetCurrentTaskHandle();
+		xSemaphoreGive(dev->buffers.rx.slock);
+	} else {
+		return 0; /* lock timeout */
+	}
 
-	if (!uart_send_data(dev, buf, size, rtos_tx_handler, handle))
-		vTaskSuspend(handle);
-
-	xSemaphoreGive(rcv_params[dev_num].tx_mutex);
-}
-
-void uart_send_string_rtos(uart_dev dev, char *string)
-{
-	uart_send_data_rtos(dev, string, strlen(string));
-}
-
-uint16_t uart_receive_rtos(uart_dev dev, char *buf, uint16_t size, char stop)
-{
-	uint8_t dev_num = dev->index - 1;
-	struct params_t *par;
-
-	if (!rcv_params[dev_num].rx_mutex)
-		rcv_params[dev_num].rx_mutex = xSemaphoreCreateMutex();
-
-	xSemaphoreTake(rcv_params[dev_num].rx_mutex, portMAX_DELAY);
-
-	par = &rcv_params[dev_num];
-
-	par->handle = xTaskGetCurrentTaskHandle();
-
-	uart_enable_rx(dev, buf, size, rtos_rx_handler, par, stop);
-
-	vTaskSuspend(par->handle);
-
-	uart_disable_rx(dev);
-
-	xSemaphoreGive(rcv_params[dev_num].rx_mutex);
-
-	return par->bytes_received;
-}
-
-static void rtos_rx_timeout_isr(char *buffer, uint16_t size,
-	void *data)
-{
-	struct params_t *par = data;
-
-	par->bytes_received = size;
-
-	xSemaphoreGiveFromISR(par->rtimeout, 0);
-}
-
-uint16_t uart_receive_by_timeout_rtos(uart_dev dev, char *buf, uint16_t size,
-	uint16_t timeout, char stop)
-{
-	uint8_t dev_num = dev->index - 1;
-	struct params_t *par;
-
-	if (!rcv_params[dev_num].rx_mutex)
-		rcv_params[dev_num].rx_mutex = xSemaphoreCreateMutex();
-
-	if (!rcv_params[dev_num].rtimeout)
-		rcv_params[dev_num].rtimeout = xSemaphoreCreateBinary();
-
-	xSemaphoreTake(rcv_params[dev_num].rx_mutex, portMAX_DELAY);
-
-	par = &rcv_params[dev_num];
-
-	uart_enable_rx(dev, buf, size, rtos_rx_timeout_isr, par, stop);
-
-	xSemaphoreTake(rcv_params[dev_num].rtimeout, timeout);
-
-	uart_disable_rx(dev);
-
-	xSemaphoreGive(rcv_params[dev_num].rx_mutex);
-
-	return par->bytes_received;
+	return ret;
 }
 
 #endif /* FREERTOS */

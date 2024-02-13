@@ -4,7 +4,7 @@
  *
  * MIT License
  *
- * Copyright (c) 2020 Pavel Nadein
+ * Copyright (c) 2020-2024 Pavel Nadein
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -52,143 +52,201 @@
 #include <stdint.h>
 #include "gpio.h"
 
-/* uart device struct accessible only from source */
-struct uart_dev_t;
+#ifdef FREERTOS
+#include "FreeRTOS.h"
+#include "semphr.h"
+#endif
 
-/* uart types redefenition */
-typedef const struct uart_dev_t * uart_dev;
-typedef void (*uart_tx_handler_t)(void *buffer);
-typedef void (*uart_rx_handler_t)(char *buffer, uint16_t size, void *data);
+/**
+ * @brief Uart types definition.
+ */
+typedef void (*uart_handler_t)(char *buffer, uint16_t size, void *data);
 typedef void (*uart_rx_single_byte_t)(char byte);
 
 /**
-  * @brief  Lookup for a gpio settings to configure the uart.
-  * This function helps you to find a proper connection to uart if you only
-  * know the where it is used. You should provide a gpio and any of tx/rx pins.
-  * @param  gpio: GPIO where one of the tx/rx pins are connected to.
-  * @param  pin_mask: pinmask of tx or rx pin.
-  * @param  freq: uart frequency.
-  *
-  * @retval 0 if no settings found or a pointer to the device if success.
-  */
-uart_dev find_uart_dev(GPIO_TypeDef *gpio, uint16_t pin_mask, uint32_t freq);
+ * @brief Uart buffers.
+*/
+struct uart_buf_t {
+	struct {
+		char *buf;		/* data will be stored here */
+		char stop;		/* end of data marker */
+		uint16_t size;		/* maximum buffer size */
+		uint16_t cnt;		/* byte counter */
+		uart_handler_t handler; /* buffer full/new line handler */
+		void *data;		/* private data for generic use */
+		uint32_t error;		/* error flags will be stored here */
+		uart_rx_single_byte_t s_byte_rcv; /* single byte rcv handler */
+		volatile bool done;	/* set to true when done */
+#ifdef FREERTOS
+		SemaphoreHandle_t slock;
+		SemaphoreHandle_t sdone;
+	} rx;
+#endif
+	struct {
+		char *buf;		/* data will be taken from here */
+		uint16_t size;		/* amount of bytes to transfer */
+		uint16_t cnt;		/* byte counter */
+		uart_handler_t handler; /* end of transfer handler */
+		void *data;		/* private data for generic use */
+		volatile bool done;	/* set to true when done */
+#ifdef FREERTOS
+		SemaphoreHandle_t slock;
+		SemaphoreHandle_t sdone;
+	} tx;
+#endif
+};
 
 /**
-  * @brief  Get uart by index and initialize it.
-  * @param  num: inxex of UART [1..6] depends of device choosen.
-  * @param  freq: uart frequency.
-  * @note   you can use find_uart_dev or get_uart_dev to get a uart settings.
-  *
-  * @retval 0 if no settings found or a pointer to the device if success.
-  */
-uart_dev get_uart_dev(uint8_t num, uint32_t freq);
+ * @brief Uart device definition struct including uart buffers.
+*/
+typedef struct uart_dev {
+	const struct uart_periph_dev *uart_periph;
+	USART_TypeDef *base;
+	struct uart_buf_t buffers;
+} uart_dev_t;
 
 /**
-  * @brief  Enable receiving interrupt.
-  * @param  dev: Pointer to settings struct.
-  * @param  buf: Pointer to receiving buffer.
-  * @param  size: Maximum buffer size.
-  * @param  handler: Pointer to handler function.
-  * @param  data: Pointer private data if needed.
-  * @param  stop: Stop marker to detect end of string ('\r' or '\n')
+  * @brief Initialize the UART.
   *
-  * @retval none.
+  * @param dev		Pointer where the device specific data is stored to.
+  * @param uart_num	Number of UART device [1..6].
+  * @param tx_pin	Pin mask where TX pin is connected to.
+  * @param rx_pin	Pin mask where RX pin is connected to.
+  * @param freq		UART communication frequency.
+  *
+  * @retval zero if success, error code if failed.
   */
-void uart_enable_rx(uart_dev dev, char *buf, uint16_t size,
-	uart_rx_handler_t handler, void *data, char stop);
+int uart_init(uart_dev_t *dev,
+	      uint8_t uart_num,
+	      uint16_t tx_pin,
+	      uint16_t rx_pin,
+	      uint32_t freq);
 
 /**
-  * @brief  Enable receiving interrupt for each individual byte.
-  * @param  dev: Pointer to handler function.
-  * @param  handler: Pointer handler function.
+  * @brief  Receive multiple bytes using receive interrupt.
   *
-  * @retval none.
+  * @param dev		Pointer where the device specific data is stored to.
+  * @param dst		Pointer to destination buffer.
+  * @param size	Size of destination buffer.
+  * @param handler	Callback called when:
+  *			1. if 'stop' >=0 when stop character received.
+  *			2. when buffer is full (== size).
+  *			When handler is provided, this is non-waiting call.
+  *			If no handler provided this is a waiting call.
+  * @param data		Pointer private data if needed.
+  * @param stop		Stop receiving character (negative value if not used).
+  *
+  * @return none.
   */
-void uart_enable_single_byte_int(uart_dev dev, uart_rx_single_byte_t handler);
+void uart_enable_rx_multi(uart_dev_t *dev,
+			  char *dst,
+			  uint16_t size,
+			  uart_handler_t handler,
+			  void *data,
+			  int stop);
+
+/**
+  * @brief Enable receiving interrupt for each individual byte.
+  *
+  * @param dev		Pointer where the device specific data is stored to.
+  * @param handler	Pointer to callback function.
+  *
+  * @return none.
+  */
+void uart_enable_rx_single(uart_dev_t *dev, uart_rx_single_byte_t handler);
 
 /**
   * @brief  Disable receiving interrupt.
-  * @param  dev: Pointer to settings struct.
+  *
+  * @param dev		Pointer where the device specific data is stored to.
   *
   * @retval none.
   */
-void uart_disable_rx(uart_dev dev);
+void uart_disable_rx(uart_dev_t *dev);
 
 /**
-  * @brief  Send data to UART using DMA.
-  * @param  dev: Pointer to settings struct.
-  * @param  buf: Pointer to trasmitter buffer.
-  * @param  size: Maximum buffer size.
-  * @param  uart_tx_handler_t: Pointer handler function if needed.
-  * @param  data: Pointer private data if needed.
+  * @brief Send data over UART.
   *
-  * @retval 0 if success.
+  * @param dev		Pointer where the device specific data is stored to.
+  * @param src		Pointer to transmitting buffer.
+  * @param size		Amount of bytes to be send.
+  * @param uart_tx_handler_t	Pointer to callback function when done.
+  * @param data		Pointer private data if needed.
+  *
+  * @retval Amount of bytes actually sent.
   */
-int uart_send_data(uart_dev dev, char *buf, uint16_t size,
-	uart_tx_handler_t handler, void *data);
+uint16_t uart_send(uart_dev_t *dev,
+		   char *src,
+		   uint16_t size,
+		   uart_handler_t handler,
+		   void *data);
 
 /**
-  * @brief  Simply sends the null-terminated string to UART.
-  * @param  dev: Pointer to settings struct.
-  * @param  buf: Pointer to trasmitter buffer.
+  * @brief Wait for data to be sent.
   *
-  * @retval 0 0 if success.
+  * @param dev		Pointer where the device specific data is stored to.
   */
-int uart_send_string(uart_dev dev, char *buf);
+void uart_wait_tx_done(uart_dev_t *dev);
 
 /**
-  * @brief  Enable/disable DMA for UART TX transfer.
-  * @param  dev: Pointer to settings struct.
-  * @param  enable: true or false to enable or disable the DMA.
+  * @brief Check receive error.
   *
-  * @retval None.
+  * @param dev		Pointer where the device specific data is stored to.
+  *
+  * @retval		Error flag or zero if no errors.
   */
-void uart_dma(uart_dev dev, bool enable);
+uint32_t uart_check_rx_error(uart_dev_t *dev);
+
+/**
+  * @brief Retrieve amount of bytes send.
+  *
+  * @param dev		Pointer where the device specific data is stored to.
+  *
+  * @retval		Amount of bytes send.
+  */
+uint16_t uart_get_send_bytes(uart_dev_t *dev);
+
+/**
+  * @brief Retrieve amount of bytes received.
+  *
+  * @param dev		Pointer where the device specific data is stored to.
+  *
+  * @retval		Amount of bytes received.
+*/
+uint16_t uart_get_recv_bytes(uart_dev_t *dev);
 
 #ifdef FREERTOS
-
 /**
-  * @brief  send data using RTOS.
-  * @param  dev: Pointer to settings struct.
-  * @param  buf: buffer to send.
-  * @param  size: amount of bytes to send.
+  * @brief Send data over UART under FreeRTOS.
+  * @param dev		Pointer where the device specific data is stored to.
+  * @param src		Pointer to buffer.
+  * @param size		Amount of bytes to send.
   *
   * @retval none.
   */
-void uart_send_data_rtos(uart_dev dev, char *buf, uint16_t size);
+uint16_t uart_send_rtos(uart_dev_t *dev,
+			char *src,
+			uint16_t size,
+			uint32_t timeout_ms);
+
+
 
 /**
-  * @brief  send null termitanted string using RTOS.
-  * @param  dev: Pointer to settings struct.
-  * @param  buf: buffer to send.
-  *
-  * @retval none.
-  */
-void uart_send_string_rtos(uart_dev dev, char *string);
-
-/**
-  * @brief  Wait for data from uart using RTOS.
-  * @param  dev: Pointer to settings struct.
-  * @param  buf: buffer to send.
-  * @param  size: maximum buffer size.
-  * @param  stop: Stop marker to detect end of string ('\r' or '\n')
+  * @brief Receive data over UART under FreeRTOS.
+  * @param dev		Pointer where the device specific data is stored to.
+  * @param buf		Buffer where the data will be copied.
+  * @param size		Maximum buffer size.
+  * @param timeout_ms	Timeout in [ms] to wait for data to be received.
+  *			Use 0 to wait forever.
+  * @param stop		Stop marker to detect end of data
   *
   * @retval amount of bytes received.
   */
-uint16_t uart_receive_rtos(uart_dev dev, char *buf, uint16_t size, char stop);
-
-/**
-  * @brief  Wait for data from uart using RTOS with timeout.
-  * @param  dev: Pointer to settings struct.
-  * @param  buf: buffer to send.
-  * @param  size: maximum buffer size.
-  * @param  timeout: maximum waiting time in RTOS units (i.e. ms)
-  * @param  stop: Stop marker to detect end of string ('\r' or '\n')
-  *
-  * @retval amount of bytes received or 0 if time expired.
-  */
-uint16_t uart_receive_by_timeout_rtos(uart_dev dev, char *buf, uint16_t size,
-	uint16_t timeout, char stop);
+uint16_t uart_receive_rtos(uart_dev_t *dev,
+			   char *dst,
+			   uint16_t size,
+			   uint32_t timeout_ms,
+			   int stop);
 
 #endif /* FREERTOS */
 

@@ -4,7 +4,7 @@
  *
  * MIT License
  *
- * Copyright (c) 2020 Pavel Nadein
+ * Copyright (c) 2020-2024 Pavel Nadein
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -52,14 +52,13 @@
 #include <stm32f0xx.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include "rtos.h"
 
 #define I2C_SUCCESS	0
 #define I2C_ERR_NOACK	1
 #define I2C_ERR_ARLO	2
 
 /* spi types redefenition */
-typedef const struct i2c_dev_t * i2c_dev;
+typedef const struct i2c_dev_t *i2c_dev;
 
 /**
   * @brief  Lookup for a gpio settings to configure the i2c.
@@ -108,18 +107,22 @@ int i2c_read_reg(i2c_dev dev, uint8_t addr, uint8_t reg,
 	uint8_t *data, uint16_t size);
 
 #ifdef FREERTOS
-
 /**
   * @brief  Transfer the data buffer to reg using RTOS
   * @param  dev: device pointer.
   * @param  addr: device i2c address
   * @param  data: pointer to buffer
   * @param  size: amount of bytes to transfer
+  * @param  timeout: timeout in [ms]
   *
   * @retval 0 if success, I2C_ERR_NOACK if device not responds
   */
-int i2c_write_reg_rtos(i2c_dev dev, uint8_t addr, uint8_t reg,
-	uint8_t *data, uint16_t size);
+int i2c_write_reg_rtos(i2c_dev dev,
+		       uint8_t addr,
+		       uint8_t reg,
+		       uint8_t *data,
+		       uint16_t size,
+		       uint32_t timeout_ms);
 
 /**
   * @brief  Receives the data to buffer starting from reg using RTOS
@@ -127,11 +130,16 @@ int i2c_write_reg_rtos(i2c_dev dev, uint8_t addr, uint8_t reg,
   * @param  addr: device i2c address
   * @param  data: pointer to buffer
   * @param  size: amount of bytes to receive
+  * @param  timeout: timeout in [ms]
   *
   * @retval 0 if success, I2C_ERR_NOACK if device not responds
   */
-int i2c_read_reg_rtos(i2c_dev dev, uint8_t addr, uint8_t reg,
-	uint8_t *data, uint16_t size);
+int i2c_read_reg_rtos(i2c_dev dev,
+		      uint8_t addr,
+		      uint8_t reg,
+		      uint8_t *data,
+		      uint16_t size,
+		      uint32_t timeout_ms);
 
 #endif /* FREERTOS */
 

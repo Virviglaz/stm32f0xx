@@ -4,7 +4,7 @@
  *
  * MIT License
  *
- * Copyright (c) 2020 Pavel Nadein
+ * Copyright (c) 2020-2024 Pavel Nadein
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -45,6 +45,11 @@
 #include "dma.h"
 #include <string.h>
 #include <stdbool.h>
+
+#ifdef FREERTOS
+#include "FreeRTOS.h"
+#include "semphr.h"
+#endif
 
 #define NOF_DMA_CHANNELS	5
 
@@ -205,36 +210,38 @@ void memcpy_dma(void *dst, const void *src, uint16_t size, uint16_t flag)
 
 #else /* FREERTOS */
 
-static void handler(void *data)
+static void handler(void *arg)
 {
-	rtos_schedule_isr(data);
+	SemaphoreHandle_t done = (SemaphoreHandle_t)arg;
+	xSemaphoreGiveFromISR(done, 0);
 }
 
 void memcpy_dma(void *dst, const void *src, uint16_t size, uint16_t flag)
 {
-	static SemaphoreHandle_t mutex = 0;
+	static SemaphoreHandle_t lock = 0;
+	static SemaphoreHandle_t done;
 	DMA_Channel_TypeDef *ch;
-	TaskHandle_t handle;
 	uint8_t ch_num;
 
-	if (!mutex)
-		mutex = xSemaphoreCreateMutex();
+	if (!lock) {
+		lock = xSemaphoreCreateMutex();
+		done = xSemaphoreCreateBinary();
+	}
 
-	xSemaphoreTake(mutex, portMAX_DELAY);
+	xSemaphoreTake(lock, portMAX_DELAY);
+	xSemaphoreTake(done, 0);
 
-	handle = xTaskGetCurrentTaskHandle();
-
-	ch = find_free_dma_ch(&ch_num, handler, handle);
+	ch = find_free_dma_ch(&ch_num, handler, (void *)done);
 
 	if (!ch) /* failed to get channel, use cpu instead */
 		memcpy(dst, src, size);
 	else {
 		dma_setup(ch, (void *)src, dst, size, DMA_MEM2MEM_B | flag);
-		vTaskSuspend(handle);
+		xSemaphoreTake(done, portMAX_DELAY);
 		dma_release(ch_num);
 	}
 
-	xSemaphoreGive(mutex);
+	xSemaphoreGive(lock);
 }
 
 #endif /* FREERTOS */
