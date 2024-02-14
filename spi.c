@@ -51,6 +51,11 @@
 
 #define NOF_DEVICES			2 /*< SPI1 & SPI2 */
 
+#ifdef FREERTOS
+#include "FreeRTOS.h"
+#include "semphr.h"
+#endif
+
 struct msg_t {
 	uint8_t *tx;			/* tx buffer pointer */
 	uint8_t *rx;			/* rx buffer pointer */
@@ -73,6 +78,11 @@ static struct xfer_t {
 		DMA_Channel_TypeDef *tx;
 		DMA_Channel_TypeDef *rx;
 	} dma;				/* dma channels */
+
+#ifdef FREERTOS
+	SemaphoreHandle_t slock;
+	SemaphoreHandle_t sdone;
+#endif
 } xfrs[NOF_DEVICES];
 
 static const struct spi_dev_t {
@@ -346,6 +356,12 @@ static int init(spi_dev dev, uint32_t freq, bool idle_clock_high)
 	spi->CR1 = (clock_div << 3) | clock_mode | SPI_CR1_SSI | \
 		SPI_CR1_SSM | SPI_CR1_MSTR;
 
+#ifdef FREERTOS
+	uint8_t n = dev->index - 1;
+	xfrs[n].slock = xSemaphoreCreateMutex();
+	xfrs[n].sdone = xSemaphoreCreateBinary();
+#endif
+
 	return 0;
 }
 
@@ -451,9 +467,6 @@ static void handler(void *arg)
 	xSemaphoreGive(done);
 }
 
-static SemaphoreHandle_t lock[NOF_DEVICES] = { 0 };
-static SemaphoreHandle_t done[NOF_DEVICES] = { 0 };
-
 static int send_message_rtos(
 	spi_dev dev,
 	GPIO_TypeDef *gpio,
@@ -467,19 +480,15 @@ static int send_message_rtos(
 	int res;
 	uint8_t n = dev->index - 1;
 
-	if (!lock[n]) {
-		lock[n] = xSemaphoreCreateMutex();
-		done[n] = xSemaphoreCreateBinary();
-	}
-
-	xSemaphoreTake(lock[n], portMAX_DELAY);
+	xSemaphoreTake(xfrs[n].slock, portMAX_DELAY);
+	xSemaphoreTake(xfrs[n].sdone, 0);
 
 	res = send_message(dev, gpio, pin, reg, reg_size,
-		tx_data, rx_data, size, handler, (void *)done[n]);
+		tx_data, rx_data, size, handler, (void *)xfrs[n].sdone);
 	if (!res)
-		xSemaphoreTake(done[n], portMAX_DELAY);
+		xSemaphoreTake(xfrs[n].sdone, portMAX_DELAY);
 
-	xSemaphoreGive(lock[n]);
+	xSemaphoreGive(xfrs[n].slock);
 
 	return res;
 }
@@ -502,16 +511,11 @@ uint8_t spi_read_byte_rtos(spi_dev dev, GPIO_TypeDef *gpio,
 	uint8_t n = dev->index - 1;
 	uint8_t ret;
 
-	if (!lock[n]) {
-		lock[n] = xSemaphoreCreateMutex();
-		done[n] = xSemaphoreCreateBinary();
-	}
-
-	xSemaphoreTake(lock[n], portMAX_DELAY);
+	xSemaphoreTake(xfrs[n].slock, portMAX_DELAY);
 
 	ret = spi_read_byte(dev, gpio, pin, b);
 
-	xSemaphoreGive(lock[n]);
+	xSemaphoreGive(xfrs[n].slock);
 
 	return ret;
 }
