@@ -65,6 +65,7 @@
 
 /**
   * @brief  Initialize DMA and find a channel.
+  *
   * @param  channel: Number of channel.
   * @param  handler: Pointer to function to be called at finish.
   * @param  data: Pointer to data to be provided to handler.
@@ -87,6 +88,7 @@ DMA_Channel_TypeDef *find_free_dma_ch(uint8_t *found,
 
 /**
   * @brief  Release the DMA channel.
+  *
   * @param  ch: DMA channel number.
   *
   * @retval None.
@@ -95,9 +97,10 @@ void dma_release(uint8_t ch);
 
 /**
   * @brief  Setup and init DMA transfer.
+  *
   * @param  ch: Pointer to DMA channel allocated before.
   * @param  mem: Pointer to memory location.
-  * @param  per: Pointer to peripherial location.
+  * @param  per: Pointer to peripheral location.
   * @param  size: Amount of bytes to transfer.
   * @param  flags: DMA flags to setup configuration register.
   *
@@ -114,6 +117,7 @@ static inline void dma_setup(DMA_Channel_TypeDef *ch, void *mem, void *per,
 
 /**
   * @brief  Copy data memory to memory using DMA.
+  *
   * @param  dst: pointer to the destination array.
   * @param  src: pointer to the source of data to be copied.
   * @param  size: number of bytes to copy.

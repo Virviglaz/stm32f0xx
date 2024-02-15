@@ -464,7 +464,7 @@ void SPI2_IRQHandler(void)
 static void handler(void *arg)
 {
 	SemaphoreHandle_t done = (SemaphoreHandle_t)arg;
-	xSemaphoreGive(done);
+	xSemaphoreGiveFromISR(done, 0);
 }
 
 static int send_message_rtos(

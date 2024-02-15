@@ -4,7 +4,7 @@
  *
  * MIT License
  *
- * Copyright (c) 2020 Pavel Nadein
+ * Copyright (c) 2020-2024 Pavel Nadein
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -54,11 +54,12 @@
 
 /**
   * @brief  Calculates crc32 function.
-  * @param  buf: Pointer to buffer with the data.
-  * @param  size: Buffer size.
-  * @param  data_size: 1, 2 or 4 for byte/word/longword data.
   *
-  * @retval Calcutated value.
+  * @param  buf		Pointer to buffer with the data.
+  * @param  size	Buffer size.
+  * @param  data_size	1, 2 or 4 for 8/16/32 crc size.
+  *
+  * @retval Calculated value.
   */
 uint32_t crc(void *data, uint32_t size, const uint8_t data_size);
 

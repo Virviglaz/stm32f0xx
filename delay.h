@@ -4,7 +4,7 @@
  *
  * MIT License
  *
- * Copyright (c) 2020 Pavel Nadein
+ * Copyright (c) 2020-2024 Pavel Nadein
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -54,6 +54,7 @@
 /**
   * @brief  Delays execution for us microseconds
   *
+  * @param us	Microseconds to wait.
   * @retval None.
   */
 void delay_us(uint32_t us);
@@ -61,6 +62,7 @@ void delay_us(uint32_t us);
 /**
   * @brief  Delays execution for ms milliseconds
   *
+  * @param ms	Milliseconds to wait.
   * @retval None.
   */
 void delay_ms(uint32_t ms);	 

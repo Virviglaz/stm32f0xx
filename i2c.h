@@ -57,15 +57,16 @@
 #define I2C_ERR_NOACK	1
 #define I2C_ERR_ARLO	2
 
-/* spi types redefenition */
+/* spi types redefinition */
 typedef const struct i2c_dev_t *i2c_dev;
 
 /**
   * @brief  Lookup for a gpio settings to configure the i2c.
+  *
   * This function helps you to find a proper connection to i2c if you only
   * knows the where it is used. You should provide a gpio and any of used pins.
   * @param  gpio: GPIO where one of the SDC/SDA pins are connected to.
-  * @param  pin_mask: pinmask of tx or rx pin.
+  * @param  pin_mask: pin mask of tx or rx pin.
   * @param  fast_mode: 400kHz if true, 100kHz if false.
   *
   * @retval 0 if no settings found or a pointer to struct if success.
@@ -74,7 +75,8 @@ i2c_dev find_i2c_dev(GPIO_TypeDef *gpio, uint16_t pin_mask, bool fast_mode);
 
 /**
   * @brief  Get i2c by index.
-  * @param  num: inxex of i2c [1 or 2] depends of device choosen.
+  *
+  * @param  num: index of i2c [1 or 2] depends of device choosen.
   * @param  fast_mode: 400kHz if true, 100kHz if false.
   * @note   you can use find_i2c_dev or get_i2c_dev to get a i2c device pointer.
   *
@@ -83,7 +85,8 @@ i2c_dev find_i2c_dev(GPIO_TypeDef *gpio, uint16_t pin_mask, bool fast_mode);
 i2c_dev get_i2c_dev(uint8_t num, bool fast_mode);
 
 /**
-  * @brief  Transfer the data buffer to reg
+  * @brief  Transfer the data buffer to reg.
+  *
   * @param  dev: device pointer.
   * @param  addr: device i2c address
   * @param  data: pointer to buffer
@@ -95,7 +98,8 @@ int i2c_write_reg(i2c_dev dev, uint8_t addr, uint8_t reg,
 	uint8_t *data, uint16_t size);
 
 /**
-  * @brief  Receives the data to buffer starting from reg
+  * @brief  Receives the data to buffer starting from reg.
+  *
   * @param  dev: device pointer.
   * @param  addr: device i2c address
   * @param  data: pointer to buffer
@@ -108,7 +112,8 @@ int i2c_read_reg(i2c_dev dev, uint8_t addr, uint8_t reg,
 
 #ifdef FREERTOS
 /**
-  * @brief  Transfer the data buffer to reg using RTOS
+  * @brief  Transfer the data buffer to reg using RTOS.
+  *
   * @param  dev: device pointer.
   * @param  addr: device i2c address
   * @param  data: pointer to buffer
@@ -125,7 +130,8 @@ int i2c_write_reg_rtos(i2c_dev dev,
 		       uint32_t timeout_ms);
 
 /**
-  * @brief  Receives the data to buffer starting from reg using RTOS
+  * @brief  Receives the data to buffer starting from reg using RTOS.
+  *
   * @param  dev: device pointer.
   * @param  addr: device i2c address
   * @param  data: pointer to buffer

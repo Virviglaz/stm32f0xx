@@ -4,7 +4,7 @@
  *
  * MIT License
  *
- * Copyright (c) 2020 Pavel Nadein
+ * Copyright (c) 2020-2024 Pavel Nadein
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -53,17 +53,18 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/* spi types redefenition */
+/* spi types redefinition */
 typedef const struct spi_dev_t * spi_dev;
 
 /**
-  * @brief  Lookup for a gpio settings to configure the spi.
+  * @brief Lookup for a gpio settings to configure the spi.
+  *
   * This function helps you to find a proper connection to spi if you only
   * knows the where it is used. You should provide a gpio and any of used pins.
-  * @param  gpio: GPIO where one of the MSCK/MISO/MOSI pins are connected to.
-  * @param  pin_mask: pinmask of tx or rx pin.
-  * @param  freq: Clock frequency in Hz.
-  * @param  clock_high: idle clock mode false = low, true = high.
+  * @param gpio		GPIO where one of the MSCK/MISO/MOSI pins are connected.
+  * @param pin_mask	Pin mask of tx or rx pin.
+  * @param freq	Clock 	frequency in Hz.
+  * @param clock_high	Idle clock mode false = low, true = high.
   *
   * @retval 0 if no settings found or a pointer to struct if success.
   */
@@ -72,10 +73,11 @@ spi_dev find_spi_dev(GPIO_TypeDef *gpio, uint16_t pin_mask, uint32_t freq,
 
 /**
   * @brief  Get spi by index.
-  * @param  num: inxex of SPI [1 or 2] depends of device choosen.
-  * @param  freq: Clock frequency in Hz.
-  * @param  clock_high: idle clock mode false = low, true = high.
-  * @note   you can use find_spi_dev or get_spi_dev to get a spi device pointer.
+  *
+  * @param num		Index of SPI [1 or 2] depends of device choosen.
+  * @param freq		Clock frequency in Hz.
+  * @param clock_high	Idle clock mode false = low, true = high.
+  * @note You can use find_spi_dev or get_spi_dev to get a spi device pointer.
   *
   * @retval 0 if no settings found or a pointer to the device if success.
   */
@@ -83,12 +85,13 @@ spi_dev get_spi_dev(uint8_t num, uint32_t freq, bool idle_clock_high);
 
 /**
   * @brief  Write data from buffer to register.
-  * @param  dev: pointer to device struct.
-  * @param  gpio: Chip select gpio.
-  * @param  pin: Chip select pin.
-  * @param  reg: Register number to write to.
-  * @param  data: Pointer where the data is stored.
-  * @param  size: Amount of bytes to write.
+  *
+  * @param dev		Pointer to device struct.
+  * @param gpio		Chip select gpio.
+  * @param pin		Chip select pin.
+  * @param reg		Register number to write to.
+  * @param data		Pointer where the data is stored.
+  * @param size		Amount of bytes to write.
   *
   * @retval 0 if success.
   */
@@ -97,12 +100,13 @@ int spi_write_reg(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
 
 /**
   * @brief  Read data to buffer from register.
-  * @param  dev: pointer to device struct.
-  * @param  gpio: Chip select gpio.
-  * @param  pin: Chip select pin.
-  * @param  reg: Register number to write to.
-  * @param  data: Pointer where the data is stored.
-  * @param  size: Amount of bytes to write.
+  *
+  * @param dev		Pointer to device struct.
+  * @param gpio		Chip select gpio.
+  * @param pin		Chip select pin.
+  * @param reg		Register number to write to.
+  * @param data		Pointer where the data is stored.
+  * @param size		Amount of bytes to write.
   *
   * @retval 0 if success.
   */
@@ -111,10 +115,11 @@ int spi_read_reg(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
 
 /**
   * @brief  Fast single byte transfer.
-  * @param  dev: pointer to device struct.
-  * @param  gpio: Chip select gpio.
-  * @param  pin: Chip select pin.
-  * @param  n: byte to transfer.
+  *
+  * @param dev		Pointer to device struct.
+  * @param gpio		Chip select gpio.
+  * @param in		Chip select pin.
+  * @param  n		Byte to transfer.
   *
   * @retval received byte.
   */
@@ -124,12 +129,13 @@ uint8_t spi_read_byte(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin, uint8_t b);
 
 /**
   * @brief  Write a sequence to register using RTOS.
-  * @param  dev: pointer to device struct.
-  * @param  gpio: Chip select gpio.
-  * @param  pin: Chip select pin.
-  * @param  reg: Register number to write to.
-  * @param  data: Pointer where the data is stored.
-  * @param  size: Amount of bytes to write.
+  *
+  * @param dev		Pointer to device struct.
+  * @param gpio		Chip select gpio.
+  * @param pin		Chip select pin.
+  * @param reg		Register number to write to.
+  * @param data		Pointer where the data is stored.
+  * @param size		Amount of bytes to write.
   *
   * @retval 0 if success.
   */
@@ -138,12 +144,13 @@ int spi_write_reg_rtos(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
 
 /**
   * @brief  Read a sequence from register using RTOS.
-  * @param  dev: pointer to device struct.
-  * @param  gpio: Chip select gpio.
-  * @param  pin: Chip select pin.
-  * @param  reg: Register number to read from.
-  * @param  data: Pointer where the data will be stored.
-  * @param  size: Amount of bytes to read.
+  *
+  * @param dev		Pointer to device struct.
+  * @param gpio		Chip select gpio.
+  * @param pin		Chip select pin.
+  * @param reg		Register number to read from.
+  * @param data		Pointer where the data will be stored.
+  * @param size		Amount of bytes to read.
   *
   * @retval 0 if success.
   */
@@ -152,10 +159,11 @@ int spi_read_reg_rtos(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
 
 /**
   * @brief  Fast single byte transfer using RTOS.
-  * @param  dev: pointer to device struct.
-  * @param  gpio: Chip select gpio.
-  * @param  pin: Chip select pin.
-  * @param  n: byte to transfer.
+  *
+  * @param dev		Pointer to device struct.
+  * @param gpio		Chip select gpio.
+  * @param pin		Chip select pin.
+  * @param n		Byte to transfer.
   *
   * @retval received byte.
   */
