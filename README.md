@@ -1,8 +1,5 @@
 # STM32F0xx open source highly efficient peripheral driver
 
-This drivers is a simplified and highly enchansed alternative to the official HAL/SPL ST's drivers.
-It is specially made to be used with realtime operational systems as well as with the bare metall platforms.
-
 ## Clock setup
 ```c
 /* Setup clocking from HSIxPLL for 16 MHz (8..48 MHz) */
@@ -31,10 +28,7 @@ static void uart_rx_handler(char *buffer, uint16_t size, void *data)
 }
 
 /* find uart connected to GPIOB, pin 6 (can be tx or rx pin), init for 9600 bod */
-uart = find_uart_dev(PB6, 9600);
-or
-/* use UART1 insted if you know where it is connected to and init it for 9600 bod */
-uart = get_uart_dev(1, 9600);
+uart_init(&uart, 1, BIT(6), BIT(7), 9600);
 
 /* enabling receiver */
 uart_enable_rx(uart, rx_buf, sizeof(rx_buf),
@@ -109,10 +103,10 @@ tim_enable_interrupt(tim7, tim_isr, 0);
 /* use timer 14 with 2500kHz frequency */
 tim_dev tim14 = get_tim_dev(14, 2500, 0);
 
-/* set manually the timebase (prescaller and period) */
+/* set manually the time-base (pre-scaler and period) */
 tim_set_timebase(tim14, 1000, 1500);
 
-/* enalbe PWM output at PB1 or if defined TIM14PWM1_REMAP at PA4 */
+/* enable PWM output at PB1 or if defined TIM14PWM1_REMAP at PA4 */
 tim_pwm_enable(tim14, 1, 1000);
 
 /* change the duty cycle */

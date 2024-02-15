@@ -1914,7 +1914,7 @@ RTF_OUTPUT             = rtf
 # If the COMPACT_RTF tag is set to YES, doxygen generates more compact RTF
 # documents. This may be useful for small projects and may help to save some
 # trees in general.
-[O# The default value is: NO.
+# The default value is: NO.
 # This tag requires that the tag GENERATE_RTF is set to YES.
 
 COMPACT_RTF            = NO
@@ -2319,7 +2319,7 @@ CLASS_GRAPH            = YES
 # dependencies (inheritance, containment, and class references variables) of the
 # class with other documented classes.
 # The default value is: YES.
-[I# This tag requires that the tag HAVE_DOT is set to YES.
+# This tag requires that the tag HAVE_DOT is set to YES.
 
 COLLABORATION_GRAPH    = YES
 
