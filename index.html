@@ -72,7 +72,7 @@ $(function() {
   <div class="headertitle"><div class="title">STM32F0xx open source highly efficient peripheral driver </div></div>
 </div><!--header-->
 <div class="contents">
-<div class="textblock"><p><a class="anchor" id="md__r_e_a_d_m_e"></a> This drivers is a simplified and highly enchansed alternative to the official HAL/SPL ST's drivers. It is specially made to be used with realtime operational systems as well as with the bare metall platforms.</p>
+<div class="textblock"><p><a class="anchor" id="md__r_e_a_d_m_e"></a> </p>
 <h1><a class="anchor" id="autotoc_md1"></a>
 Clock setup</h1>
 <div class="fragment"><div class="line"><span class="comment">/* Setup clocking from HSIxPLL for 16 MHz (8..48 MHz) */</span></div>
@@ -166,10 +166,10 @@ PWM example</h1>
 <div class="fragment"><div class="line"><span class="comment">/* use timer 14 with 2500kHz frequency */</span></div>
 <div class="line">tim_dev tim14 = get_tim_dev(14, 2500, 0);</div>
 <div class="line"> </div>
-<div class="line"><span class="comment">/* set manually the timebase (prescaller and period) */</span></div>
+<div class="line"><span class="comment">/* set manually the time-base (pre-scaler and period) */</span></div>
 <div class="line">tim_set_timebase(tim14, 1000, 1500);</div>
 <div class="line"> </div>
-<div class="line"><span class="comment">/* enalbe PWM output at PB1 or if defined TIM14PWM1_REMAP at PA4 */</span></div>
+<div class="line"><span class="comment">/* enable PWM output at PB1 or if defined TIM14PWM1_REMAP at PA4 */</span></div>
 <div class="line">tim_pwm_enable(tim14, 1, 1000);</div>
 <div class="line"> </div>
 <div class="line"><span class="comment">/* change the duty cycle */</span></div>
