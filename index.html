@@ -98,10 +98,7 @@ UART example</h1>
 <div class="line">}</div>
 <div class="line"> </div>
 <div class="line"><span class="comment">/* find uart connected to GPIOB, pin 6 (can be tx or rx pin), init for 9600 bod */</span></div>
-<div class="line">uart = find_uart_dev(PB6, 9600);</div>
-<div class="line">or</div>
-<div class="line"><span class="comment">/* use UART1 insted if you know where it is connected to and init it for 9600 bod */</span></div>
-<div class="line">uart = get_uart_dev(1, 9600);</div>
+<div class="line">uart_init(&amp;uart, 1, BIT(6), BIT(7), 9600);</div>
 <div class="line"> </div>
 <div class="line"><span class="comment">/* enabling receiver */</span></div>
 <div class="line">uart_enable_rx(uart, rx_buf, <span class="keyword">sizeof</span>(rx_buf),</div>
