@@ -48,330 +48,358 @@
 #include <errno.h>
 #include <stdbool.h>
 
-#define NOF_DEVICES			2 /*< I2C1 & I2C2 */
+#define NOF_DEVICES			2 /* I2C1 & I2C2 */
 
-#ifdef FREERTOS
-#include "FreeRTOS.h"
-#include "semphr.h"
-static struct rtos_task_t {
-	SemaphoreHandle_t done;
-	SemaphoreHandle_t lock;
-	uint8_t err;
-} rtos_i2c_dev_param[NOF_DEVICES];
-#endif
+#define STRUCT2VAL(x)			(*(uint32_t *)&x)
 
-/* task and error reporting */
-enum task_t {
-	NO_INIT = 0,
-	IN_PROGRESS,
-	DONE,
-	ERR_NOACK,
-	ERR_ARLO,
-	ERR_UNKNOWN,
-};
+static i2c_dev_t *devs[NOF_DEVICES]; /* local storage for isr routing */
 
-enum dir_t {
-	WRITING,
-	READING,
-};
-
-/* every transfer is considered as the message */
-struct msg_t {
-	enum dir_t dir;
-	uint8_t *data;
-	uint16_t size;
-	struct msg_t *next;
-};
-
-static struct xfer_t {
-	struct msg_t *msg;
-	i2c_dev dev;
-	enum task_t task;
-	uint8_t addr;
-	void (*handler)(void *data, uint8_t err);
-	void *data;
-	bool done;
-	uint16_t cnt;			/* byte counter for isr mode */
-} xfrs[NOF_DEVICES];
-
-static const struct i2c_dev_t {
-	uint8_t index;			/* index of i2c i.e. 1..6 */
+static const struct i2c_periph_dev {
+	uint8_t index;			/* index of i2c i.e. 1..2 */
 	I2C_TypeDef *i2c;		/* pointer to i2c base address */
 	GPIO_TypeDef *gpio;		/* pointer to gpio base address */
 	uint16_t scl;			/* MSCK pin bit mask BIT(x) */
 	uint16_t sda;			/* MOSI pin bit mask BIT(x) */
 	enum gpio_alt_t alt_func;	/* alt function index GPIO_AF0..7 */
-	struct xfer_t *xfer;		/* pointer to allocated RAM buffers */
 } devices[] = {
 #if defined (STM32F030xC) || defined (STM32F030X4) || defined (STM32F030X6)
-	{ 1, I2C1, GPIOA, BIT(9),  BIT(10), GPIO_AF4, &xfrs[0] },
+	{ 1, I2C1, GPIOA, BIT(9),  BIT(10), GPIO_AF4 },
 #endif
-	{ 1, I2C1, GPIOB, BIT(6),  BIT(7),  GPIO_AF1, &xfrs[0] },
-	{ 1, I2C1, GPIOB, BIT(9),  BIT(10), GPIO_AF1, &xfrs[0] },
+	{ 1, I2C1, GPIOB, BIT(6),  BIT(7),  GPIO_AF1 },
+	{ 1, I2C1, GPIOB, BIT(9),  BIT(10), GPIO_AF1 },
 #if defined (STM32F030X4) || defined (STM32F030X6)
-	{ 1, I2C1, GPIOB, BIT(10), BIT(11), GPIO_AF1, &xfrs[0] },
-	{ 1, I2C1, GPIOF, BIT(6),  BIT(7),  GPIO_AF0, &xfrs[0] },
+	{ 1, I2C1, GPIOB, BIT(10), BIT(11), GPIO_AF1 },
+	{ 1, I2C1, GPIOF, BIT(6),  BIT(7),  GPIO_AF0 },
 #endif
 #if defined (STM32F030xC) || defined (STM32F030X8)
-	{ 2, I2C2, GPIOB, BIT(10), BIT(11), GPIO_AF1, &xfrs[1] },
+	{ 2, I2C2, GPIOB, BIT(10), BIT(11), GPIO_AF1 },
 #endif
 #if defined (STM32F030xC)
-	{ 2, I2C2, GPIOB, BIT(13), BIT(14), GPIO_AF5, &xfrs[1] },
-	{ 1, I2C1, GPIOF, BIT(0),  BIT(1),  GPIO_AF1, &xfrs[0] },
+	{ 2, I2C2, GPIOB, BIT(13), BIT(14), GPIO_AF5 },
+	{ 1, I2C1, GPIOF, BIT(0),  BIT(1),  GPIO_AF1 },
 #endif
 };
 
-static uint32_t get_timings(bool fast_mode)
+struct cr2_reg {
+	uint8_t saddr0		: 1; /* Slave address bit		[0]  */
+	uint8_t saddr		: 7; /* Slave address bit	       [7:1] */
+	uint8_t saddr98		: 2; /* Slave address bit	       [9:8] */
+	enum i2c_dir dir	: 1; /* Transfer direction		[10] */
+	bool addr_10		: 1; /* 10-bit addressing mode		[11] */
+	uint16_t addr_ho	: 1; /* 10-bit address header		[12] */
+	bool start		: 1; /* Start generation		[13] */
+	bool stop		: 1; /* Stop generation			[14] */
+	bool			: 1; /* NACK generation (slave mode) 	[15] */
+	uint8_t size		: 8; /* Number of bytes		     [23:16] */
+	bool reload		: 1; /* Reload mode			[24] */
+	bool autocomplete	: 1; /* Automatic end mode		[25] */
+	bool pec		: 1; /* Packet error checking byte	[26] */
+				/* 	Reserved		     [31:27] */
+} __attribute__((__packed__));
+
+static inline uint32_t get_timings(i2c_mode_t mode)
 {
-	struct system_clock_t *clock = get_clocks();
-	struct {
-		uint8_t scll	: 8;
-		uint8_t sclh	: 8;
-		uint8_t sdadel	: 4;
-		uint8_t scldel	: 4;
-		uint8_t 	: 4;
-		uint8_t presc	: 4;
-	} t;
+	struct system_clock_t *clock = get_clocks(); /* TODO: what for? */
+	const struct {
+		uint8_t scll	: 8;	/* [0:7] */
+		uint8_t sclh	: 8;	/* [15:8] */
+		uint8_t sdadel	: 4;	/* [19:16] */
+		uint8_t scldel	: 4;	/* [23:20] */
+		uint8_t 	: 4;	/* [24:27] */
+		uint8_t presc	: 4;	/* [31:28] */
+	} t = {
+		.scll = 0x13,
+		.sclh = 0x0F,
+		.sdadel = 0x02,
+		.scldel = 0x04,
+		.presc = mode == I2C_FAST ? 0 : 1,
+	};
 
-	*(uint32_t *)&t = fast_mode ? 0x00310309 : 0x00420F13;
-	t.presc = fast_mode ? 0 : 1;
-
-	return *(uint32_t *)&t;
+	return STRUCT2VAL(t);
 }
 
-static int init(i2c_dev dev, bool fast_mode)
+static void initiate(i2c_dev_t *dev,
+		     uint8_t addr,
+		     enum i2c_dir dir,
+		     bool start,
+		     uint8_t nbytes)
 {
+	const struct cr2_reg cr2 = {
+		.start = start,
+		.saddr = addr,
+		.size = dir == I2C_READING ? nbytes : 0xFF,
+		.dir = dir,
+	};
 
-	I2C_TypeDef *i2c = dev->i2c;
-	uint32_t timings = get_timings(fast_mode);
-	if (!timings)
-		return -EINVAL;
+	dev->i2c->CR2 = STRUCT2VAL(cr2);
+}
 
-	if (dev->index == 1) {
-		BIT_SET(RCC->APB1ENR, RCC_APB1ENR_I2C1EN);
-		NVIC_EnableIRQ(I2C1_IRQn);
-	} else {
-		BIT_SET(RCC->APB1ENR, RCC_APB1ENR_I2C2EN);
-		NVIC_EnableIRQ(I2C2_IRQn);
+static void stop(i2c_dev_t *dev)
+{
+	const struct cr2_reg cr2 = { .stop = true };
+
+	dev->i2c->CR2 = STRUCT2VAL(cr2);
+}
+
+static void finish_xfer(i2c_dev_t *dev, uint8_t err)
+{
+	dev->i2c->CR1 = 0;
+
+	if (dev->xfer.handler)
+		dev->xfer.handler(dev->xfer.prv_ptr, err);
+}
+
+static int send_message(i2c_dev_t *dev,
+			uint8_t addr,
+			uint8_t *reg,
+			uint8_t reg_size,
+			enum i2c_dir dir1,
+			uint8_t *buf,
+			uint8_t size,
+			enum i2c_dir dir2,
+			isr_handler_t handler,
+			void *prv_ptr)
+{
+	/*
+	 * We can't keep this data in stack
+	 * because this memory will be reused by
+	 * the underlined calls, therefore, use heap.
+	 * Don't use more than 1 device at the same time.
+	 *
+	 * TODO: fix this limitation.
+	 */
+	static struct i2c_msg_t msgs[2];
+
+	msgs[0].data = reg;
+	msgs[0].dir = dir1;
+	msgs[0].size = reg_size;
+
+	msgs[1].data = buf;
+	msgs[1].dir = dir2;
+	msgs[1].size = size;
+
+	return i2c_transfer(dev, addr, msgs,
+		(buf && size) ? 2 : 1, handler, prv_ptr);
+}
+
+/* returns true if we should continue */
+static bool send_next_message(i2c_dev_t *dev)
+{
+	if (dev->xfer.msgs_left == 0)
+		return false;
+
+	/* if this is a last byte in message */
+	if (dev->xfer.msgs->size == 0) {
+		enum i2c_dir prev_dir = dev->xfer.msgs->dir;
+
+		dev->xfer.msgs_left--;
+
+		if (dev->xfer.msgs_left == 0) {
+			stop(dev);
+			return false;
+		}
+
+		/* switch to next message */
+		dev->xfer.msgs++;
+
+		/* when operation changes, start should be repeated */
+		if (dev->xfer.msgs->dir != prev_dir) {
+			initiate(dev, dev->xfer.address,
+				dev->xfer.msgs->dir, true,
+				dev->xfer.msgs->size);
+			return false;
+		}
 	}
 
-	gpio_alt_func_init(dev->gpio, dev->scl, dev->alt_func);
-	gpio_alt_func_init(dev->gpio, dev->sda, dev->alt_func);
-
-	i2c->TIMINGR = timings;
-
-#ifdef FREERTOS
-	rtos_i2c_dev_param[dev->index - 1].done = xSemaphoreCreateBinary();
-	rtos_i2c_dev_param[dev->index - 1].lock = xSemaphoreCreateMutex();
-#endif
-
-	return 0;
-}
-
-i2c_dev find_i2c_dev(GPIO_TypeDef *gpio, uint16_t pin_mask, bool fast_mode)
-{
-	uint8_t i;
-
-	for (i = 0; i != ARRAY_SIZE(devices); i++) {
-		i2c_dev dev = &devices[i];
-		if (dev->gpio == gpio && (dev->scl & pin_mask || \
-			dev->sda & pin_mask))
-			return init(dev, fast_mode) ? 0 : dev;
-	}
-
-	return 0; /* no devices found */
-}
-
-i2c_dev get_i2c_dev(uint8_t num, bool fast_mode)
-{
-	uint8_t i;
-
-	for (i = 0; i != ARRAY_SIZE(devices); i++) {
-		i2c_dev dev = &devices[i];
-		if (dev->index == num)
-			return init(dev, fast_mode) ? 0 : dev;
-	}
-
-	return 0; /* no devices found */
-}
-
-static inline void start(I2C_TypeDef *i2c, uint8_t addr, uint8_t size)
-{
-	i2c->CR2 = I2C_CR2_START | addr | (size << 16) | \
-		(addr & 1 ? I2C_CR2_RD_WRN : 0);
-}
-
-static inline uint16_t get_total_nof_tx_bytes(struct msg_t *m)
-{
-	uint16_t i = 0;
-	while (m) {
-		if (m->dir == WRITING)
-			i += m->size;
-		m = m->next;
-	}
-	return i;
-}
-
-/* generic transfer function. Condigure the bus and create a messages list */
-static int transfer(i2c_dev dev, uint8_t addr, struct msg_t **msg,
-	void (*handler)(void *data, uint8_t err), void *data)
-{
-	I2C_TypeDef *i2c = dev->i2c;
-	struct xfer_t *xfer = dev->xfer;
-	struct msg_t *m = *msg;
-
-	xfer->addr = addr;
-	xfer->cnt = 0;
-	xfer->dev = dev;
-	xfer->done = false;
-	xfer->task = IN_PROGRESS;
-	xfer->handler = handler;
-	xfer->data = data;
-	xfer->msg = m;
-
-	/* build a linked list */
-	do {
-		do {
-			m->next = *++msg;
-		} while (m->next && !m->next->size);
-		m = m->next;
-	} while (m);
-
-	BIT_SET(i2c->CR2, (xfer->msg->size & 0xFF) << 16);
-
-	i2c->CR1 = I2C_CR1_STOPIE | I2C_CR1_ERRIE | I2C_CR1_PE | I2C_CR1_TCIE |\
-		I2C_CR1_TXIE | I2C_CR1_RXIE;
-
-	start(i2c, xfer->addr, get_total_nof_tx_bytes(xfer->msg));
-
-	if (!xfer->handler)
-		while (xfer->task < DONE);
-	else
-		return 0;
-
-	return -(int)(xfer->task - DONE);
-}
-
-static int send_message(
-	i2c_dev dev,
-	uint8_t addr,
-	uint8_t *reg,
-	uint8_t reg_size,
-	uint8_t *buffer,
-	uint16_t size,
-	enum dir_t dir,
-	void (*handler)(void *data, uint8_t err),
-	void *data)
-{
-	/* we use static variable to reduce the stack usage using RTOS */
-	static struct msg_t msg[2];
-	static struct msg_t *msgs[3];
-
-	msg[0].dir = WRITING;
-	msg[0].data = reg;
-	msg[0].size = reg_size;
-
-	msg[1].dir = dir;
-	msg[1].data = buffer;
-	msg[1].size = size;
-
-	msgs[0] = &msg[0];
-	msgs[1] = &msg[1];
-	msgs[2] = 0;
-
-	return transfer(dev, addr << 1, msgs, handler, data);
-}
-
-static void finish_xfer(struct xfer_t *xfer, uint8_t err)
-{
-	I2C_TypeDef *i2c = xfer->dev->i2c;
-
-	i2c->CR1 = 0; /* disable i2c */
-
-	if (xfer->handler)
-		xfer->handler(xfer->data, err);
-
-	xfer->task = err ? ERR_NOACK : DONE;
-}
-
-static inline void next_byte_send(struct xfer_t *xfer, I2C_TypeDef *i2c)
-{
-	struct msg_t *m = xfer->msg;
-
-	if (xfer->cnt == m->size) {
-		m = m->next;
-		xfer->msg = m;
-		xfer->cnt = 0;
-	}
-
-	i2c->TXDR = m->data[xfer->cnt];
-		xfer->cnt++;
-}
-
-/*
- * this functions using consistently 2 messages transfer.
- * first message holding the address of memory of register where
- * access is planned. Then the next message is a buffer reading/writing
- * followed by repeated start condition in case of reading.
- */
-int i2c_write_reg(i2c_dev dev, uint8_t addr, uint8_t reg,
-	uint8_t *data, uint16_t size)
-{
-	return send_message(dev, addr, (void *)&reg, sizeof(reg),
-		data, size, WRITING, 0, 0);
-}
-
-int i2c_read_reg(i2c_dev dev, uint8_t addr, uint8_t reg,
-	uint8_t *data, uint16_t size)
-{
-	return send_message(dev, addr, (void *)&reg, sizeof(reg),
-		data, size, READING, 0, 0);
+	dev->xfer.msgs->size--;
+	return true;
 }
 
 static void isr(const uint8_t i2c_num)
 {
-	struct xfer_t *xfer = &xfrs[i2c_num];
-	I2C_TypeDef *i2c = xfer->dev->i2c;
-	struct msg_t *m = xfer->msg;
-	uint16_t isr = (uint16_t)i2c->ISR;
-	uint8_t err = I2C_SUCCESS;
+	i2c_dev_t *dev = devs[i2c_num];
+	uint32_t isr = dev->i2c->ISR;
 
+	/* 
+	 * This flag is set by hardware when a NACK
+	 * is received after a byte transmission.
+	 */
 	if (isr & I2C_ISR_NACKF) {
-		i2c->ICR = I2C_ICR_NACKCF;
-		xfer->task = ERR_NOACK;
-		err = ERR_NOACK;
+		dev->i2c->ICR = I2C_ICR_NACKCF;
+		finish_xfer(dev, I2C_ERR_NOACK);
+		return;
 	}
 
+	/* This flag is set by hardware in case of arbitration loss. */
 	if (isr & I2C_ISR_ARLO) {
-		xfer->task = ERR_ARLO;
-		BIT_CLR(i2c->CR1, I2C_CR1_PE);
-		err = I2C_ERR_ARLO;
-		finish_xfer(xfer, I2C_ERR_ARLO);
+		BIT_CLR(dev->i2c->CR1, I2C_CR1_PE);
+		finish_xfer(dev, I2C_ERR_ARLO);
+		return;
 	}
 
+	/* This flag is set by hardware when a Stop condition is detected. */
 	if (isr & I2C_ISR_STOPF) {
-		i2c->ICR = I2C_ICR_STOPCF;
-		finish_xfer(xfer, err);
+		dev->i2c->ICR = I2C_ICR_STOPCF;
+		finish_xfer(dev, 0);
+		return;
 	}
 
-	/* end of transfer isr */
-	if (isr & I2C_ISR_TC) {
-		m = m->next;
-		xfer->msg = m;
-		xfer->cnt = 0;
-		if (m && m->dir == READING)
-			start(i2c, xfer->addr | 1, m->size);
-		else
-			BIT_SET(i2c->CR2, I2C_CR2_STOP);
+	/* One byte sent */
+	if (isr & I2C_ISR_TXIS) {
+		if (send_next_message(dev))
+			dev->i2c->TXDR = *dev->xfer.msgs->data++;
+		return;
 	}
 
-	if (isr & I2C_ISR_TXIS)
-		next_byte_send(xfer, i2c);
-
-	if (m && isr & I2C_ISR_RXNE) {
-		m->data[xfer->cnt] = i2c->RXDR;
-		xfer->cnt++;
+	/* One byte received */
+	if (isr & I2C_ISR_RXNE) {
+		uint8_t rx = dev->i2c->RXDR;
+		if (send_next_message(dev))
+			*dev->xfer.msgs->data++ = rx;
+		if (!dev->xfer.msgs->size)
+			stop(dev);
+		return;
 	}
+}
+
+/**************** PUBLIC INTERFACE FUNCIONS ****************/
+int i2c_init(i2c_dev_t *dev,
+	     GPIO_TypeDef *gpio,
+	     uint16_t scl_pin_mask,
+	     uint16_t sda_pin_mask,
+	     i2c_mode_t mode)
+{
+	const struct i2c_periph_dev *periph = 0;
+
+	for (int i = 0; i != ARRAY_SIZE(devices); i++) {
+		if (devices[i].gpio == gpio &&
+		    devices[i].scl == scl_pin_mask &&
+		    devices[i].sda == sda_pin_mask)
+			periph = &devices[i];
+	}
+
+	if (!periph)
+		return EINVAL;
+
+	gpio_alt_func_init(periph->gpio, periph->scl, periph->alt_func);
+	gpio_alt_func_init(periph->gpio, periph->sda, periph->alt_func);
+
+	if (periph->index == 1) {
+		BIT_SET(RCC->APB1ENR, RCC_APB1ENR_I2C1EN);
+		NVIC_EnableIRQ(I2C1_IRQn);
+		dev->i2c = I2C1;
+	} else {
+		BIT_SET(RCC->APB1ENR, RCC_APB1ENR_I2C2EN);
+		NVIC_EnableIRQ(I2C2_IRQn);
+		dev->i2c = I2C2;
+	}
+
+	periph->i2c->TIMINGR = get_timings(mode);
+
+#ifdef FREERTOS
+	dev->done = xSemaphoreCreateBinary();
+	dev->lock = xSemaphoreCreateMutex();
+#endif
+	/* Store pointer for ISR mapping */
+	devs[periph->index - 1] = dev;
+
+	return 0;
+}
+
+int i2c_transfer(i2c_dev_t *dev,
+		 uint8_t addr,
+		 struct i2c_msg_t *msgs,
+		 uint8_t nof_msgs,
+		 isr_handler_t handler,
+		 void *prv_ptr)
+{
+	dev->xfer.done = false;
+	dev->xfer.handler = handler;
+	dev->xfer.prv_ptr = prv_ptr;
+	dev->xfer.msgs = msgs;
+	dev->xfer.msgs_left = nof_msgs;
+	dev->xfer.cnt = 0;
+	dev->xfer.error = 0;
+	dev->xfer.address = addr;
+
+	dev->i2c->CR1 = I2C_CR1_STOPIE | \
+			I2C_CR1_ERRIE | \
+			I2C_CR1_PE | \
+			I2C_CR1_TXIE | \
+			I2C_CR1_RXIE;
+
+	initiate(dev, addr, msgs->dir, true, msgs->size);
+
+	if (!dev->xfer.handler)
+		while (!dev->xfer.done) { }
+	else
+		return 0;
+
+	return dev->xfer.error;
+}
+
+int i2c_write(i2c_dev_t *dev,
+	      uint8_t addr,
+	      uint8_t *src1,
+	      uint8_t size1,
+	      uint8_t *src2,
+	      uint8_t size2)
+{
+	return send_message(dev, addr,
+		src1, size1, I2C_WRITING,
+		src2, size2, I2C_WRITING,
+		0, 0);
+}
+
+int i2c_read(i2c_dev_t *dev,
+	     uint8_t addr,
+	     uint8_t *dst1,
+	     uint8_t size1,
+	     uint8_t *dst2,
+	     uint8_t size2)
+{
+	return send_message(dev, addr,
+		dst1, size1, I2C_WRITING,
+		dst2, size2, I2C_READING,
+		0, 0);
+}
+
+int i2c_simple_write(i2c_dev_t *dev,
+		     uint8_t addr,
+		     uint8_t *src,
+		     uint16_t size)
+{
+	return send_message(dev, addr, src, size, I2C_WRITING,
+		0, 0, I2C_WRITING, 0, 0);
+}
+
+int i2c_simple_read(i2c_dev_t *dev,
+		    uint8_t addr,
+		    uint8_t *dst,
+		    uint16_t size)
+{
+	return send_message(dev, addr, dst, size, I2C_READING,
+		0, 0, I2C_WRITING, 0, 0);
+}
+
+int i2c_write_reg(i2c_dev_t *dev,
+		  uint8_t addr,
+		  uint8_t reg,
+		  uint8_t *src,
+		  uint16_t size)
+{
+	return send_message(dev, addr, &reg, 1, I2C_WRITING,
+		src, size, I2C_WRITING, 0, 0);
+}
+
+int i2c_read_reg(i2c_dev_t *dev,
+		 uint8_t addr,
+		 uint8_t reg,
+		 uint8_t *dst,
+		 uint16_t size)
+{
+	return send_message(dev, addr, &reg, 1, I2C_READING,
+		dst, size, I2C_WRITING, 0, 0);
 }
 
 void I2C1_IRQHandler(void)
@@ -385,68 +413,101 @@ void I2C2_IRQHandler(void)
 }
 
 #ifdef FREERTOS
+
+#ifndef I2C_RTOS_TIMEOUS_MS
+#define I2C_RTOS_TIMEOUS_MS	100
+#endif
+
 static void rtos_handler(void *arg, uint8_t err)
 {
-	struct rtos_task_t *param = (struct rtos_task_t *)arg;
-
-	param->err = err;
-
-	xSemaphoreGiveFromISR(param->done, 0);
+	i2c_dev_t *dev = (i2c_dev_t *)arg;
+	dev->err = err;
+	xSemaphoreGiveFromISR(dev->done, 0);
 }
 
-static int rw_reg8_rtos(i2c_dev dev,
+static int rw_reg8_rtos(i2c_dev_t *dev,
 			uint8_t addr,
 			uint8_t *reg,
 			uint8_t reg_size,
+			enum i2c_dir dir1,
 			uint8_t *data,
 			uint16_t size,
-			enum dir_t dir,
-			uint32_t timeout_ms)
+			enum i2c_dir dir2)
 {
-	uint8_t num = dev->index - 1;
-	struct rtos_task_t *params = &rtos_i2c_dev_param[num];
-	int res = 0;
+	if (xSemaphoreTake(dev->lock, portMAX_DELAY) == pdTRUE) {
+		xSemaphoreTake(dev->done, 0); /* clear */
+		send_message(dev, addr, reg, reg_size, dir1,
+			data, size, dir2, rtos_handler, dev);
 
-	if (xSemaphoreTake(params->lock, portMAX_DELAY) == pdTRUE) {
-		xSemaphoreTake(params->done, 0); /* clear */
-		res = send_message(dev, addr, reg, reg_size, data, size, dir,
-			rtos_handler, &params);
-
-		if (!res) {
-			if (xSemaphoreTake(params->done,
-				timeout_ms ? pdMS_TO_TICKS(timeout_ms) : portMAX_DELAY) != pdTRUE)
-				res = EINVAL;
-		}
+		if (xSemaphoreTake(dev->done,
+			pdMS_TO_TICKS(I2C_RTOS_TIMEOUS_MS)) != pdTRUE)
+			dev->err = EINVAL;
 	}
 
-	xSemaphoreGive(params->lock);
-
-	if (res)
-		return res;
-
-	return params->err;
+	xSemaphoreGive(dev->lock);
+	return dev->err;
 }
 
-int i2c_write_reg_rtos(i2c_dev dev,
+int i2c_write_rtos(i2c_dev_t *dev,
+		   uint8_t addr,
+		   uint8_t *src1,
+		   uint8_t size1,
+		   uint8_t *src2,
+		   uint8_t size2)
+{
+	return rw_reg8_rtos(dev, addr,
+		src1, size1, I2C_WRITING,
+		src2, size2, I2C_WRITING);
+}
+
+int i2c_read_rtos(i2c_dev_t *dev,
+		  uint8_t addr,
+		  uint8_t *dst1,
+		  uint8_t size1,
+		  uint8_t *dst2,
+		  uint8_t size2)
+{
+	return rw_reg8_rtos(dev, addr,
+		dst1, size1, I2C_WRITING,
+		dst2, size2, I2C_READING);
+}
+
+int i2c_simple_write_rtos(i2c_dev_t *dev,
+			  uint8_t addr,
+			  uint8_t *src,
+			  uint16_t size)
+{
+	return rw_reg8_rtos(dev, addr, src, size, I2C_WRITING,
+		0, 0, I2C_WRITING);
+}
+
+int i2c_simple_read_rtos(i2c_dev_t *dev,
+			 uint8_t addr,
+			 uint8_t *dst,
+			 uint16_t size)
+{
+	return rw_reg8_rtos(dev, addr, dst, size, I2C_READING,
+		0, 0, I2C_READING);
+}
+
+int i2c_write_reg_rtos(i2c_dev_t *dev,
 		       uint8_t addr,
 		       uint8_t reg,
-		       uint8_t *data,
-		       uint16_t size,
-		       uint32_t timeout_ms)
+		       uint8_t *src,
+		       uint16_t size)
 {
-	return rw_reg8_rtos(dev, addr, &reg, sizeof(reg),
-		data, size, WRITING, timeout_ms);
+	return rw_reg8_rtos(dev, addr, &reg, sizeof(reg), I2C_WRITING,
+		src, size, I2C_WRITING);
 }
 
-int i2c_read_reg_rtos(i2c_dev dev,
+int i2c_read_reg_rtos(i2c_dev_t *dev,
 		      uint8_t addr,
 		      uint8_t reg,
-		      uint8_t *data,
-		      uint16_t size,
-		      uint32_t timeout_ms)
+		      uint8_t *dst,
+		      uint16_t size)
 {
-	return rw_reg8_rtos(dev, addr, &reg, sizeof(reg),
-		data, size, READING, timeout_ms);
+	return rw_reg8_rtos(dev, addr, &reg, sizeof(reg), I2C_WRITING,
+		dst, size, I2C_READING);
 }
 
 #endif /* FREERTOS */
