@@ -65,7 +65,7 @@ struct msg_t {
 
 static struct xfer_t {
 	struct msg_t *msg;		/* messages linked list */
-	spi_dev dev;			/* pointer to spi device */
+	spi_dev_t dev;			/* pointer to spi device */
 	void (*handler)(void *data);	/* handler function for RTOS */
 	void *data;			/* caller private data */
 	volatile bool done;		/* ready flag */
@@ -85,7 +85,7 @@ static struct xfer_t {
 #endif
 } xfrs[NOF_DEVICES];
 
-static const struct spi_dev_t {
+static const struct spi_dev {
 	uint8_t index;			/* index of spi i.e. 1..6 */
 	SPI_TypeDef *spi;		/* pointer to spi base address */
 	GPIO_TypeDef *gpio;		/* pointer to gpio base address */
@@ -200,7 +200,7 @@ static void start_message_isr(struct xfer_t *xfer)
 }
 
 static int transfer(
-	spi_dev dev,
+	spi_dev_t dev,
 	struct msg_t **msg,
 	GPIO_TypeDef *gpio, uint16_t pin,
 	void (*handler)(void *data),
@@ -252,7 +252,7 @@ static int transfer(
 }
 
 static int send_message(
-	spi_dev dev,
+	spi_dev_t dev,
 	GPIO_TypeDef *gpio,
 	uint16_t pin,
 	uint8_t *reg,
@@ -323,7 +323,7 @@ static void rx_isr(struct xfer_t *xfer)
 	}
 }
 
-static int init(spi_dev dev, uint32_t freq, bool idle_clock_high)
+static int init(spi_dev_t dev, uint32_t freq, bool idle_clock_high)
 {
 	struct system_clock_t *clocks = get_clocks();
 	uint32_t clock_source;
@@ -365,13 +365,13 @@ static int init(spi_dev dev, uint32_t freq, bool idle_clock_high)
 	return 0;
 }
 
-spi_dev find_spi_dev(GPIO_TypeDef *gpio, uint16_t pin_mask, uint32_t freq,
+spi_dev_t find_spi_dev(GPIO_TypeDef *gpio, uint16_t pin_mask, uint32_t freq,
 	bool idle_clock_high)
 {
 	uint8_t i;
 
 	for (i = 0; i != ARRAY_SIZE(devices); i++) {
-		spi_dev dev = &devices[i];
+		spi_dev_t dev = &devices[i];
 		if (dev->gpio == gpio && (dev->msck & pin_mask || \
 			dev->miso & pin_mask || dev->mosi & pin_mask))
 			return init(dev, freq, idle_clock_high) ? 0 : dev;
@@ -380,12 +380,12 @@ spi_dev find_spi_dev(GPIO_TypeDef *gpio, uint16_t pin_mask, uint32_t freq,
 	return 0; /* no devices found */
 }
 
-spi_dev get_spi_dev(uint8_t num, uint32_t freq, bool idle_clock_high)
+spi_dev_t get_spi_dev(uint8_t num, uint32_t freq, bool idle_clock_high)
 {
 	uint8_t i;
 
 	for (i = 0; i != ARRAY_SIZE(devices); i++) {
-		spi_dev dev = &devices[i];
+		spi_dev_t dev = &devices[i];
 		if (dev->index == num)
 			return init(dev, freq, idle_clock_high) ? 0 : dev;
 
@@ -394,21 +394,21 @@ spi_dev get_spi_dev(uint8_t num, uint32_t freq, bool idle_clock_high)
 	return 0; /* no devices found */
 }
 
-int spi_write_reg(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
+int spi_write_reg(spi_dev_t dev, GPIO_TypeDef *gpio, uint16_t pin,
 	uint8_t reg, uint8_t *data, uint16_t size)
 {
 	return send_message(dev, gpio, pin, &reg, 1,
 		data, 0, size, 0, 0);
 }
 
-int spi_read_reg(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
+int spi_read_reg(spi_dev_t dev, GPIO_TypeDef *gpio, uint16_t pin,
 	uint8_t reg, uint8_t *data, uint16_t size)
 {
 	return send_message(dev, gpio, pin, &reg, 1,
 		0, data, size, 0, 0);
 }
 
-uint8_t spi_read_byte(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin, uint8_t b)
+uint8_t spi_read_byte(spi_dev_t dev, GPIO_TypeDef *gpio, uint16_t pin, uint8_t b)
 {
 	dev->spi->CR2 = (7 << 8) | SPI_CR2_FRXTH;
 
@@ -468,7 +468,7 @@ static void handler(void *arg)
 }
 
 static int send_message_rtos(
-	spi_dev dev,
+	spi_dev_t dev,
 	GPIO_TypeDef *gpio,
 	uint16_t pin,
 	uint8_t *reg,
@@ -493,19 +493,19 @@ static int send_message_rtos(
 	return res;
 }
 
-int spi_write_reg_rtos(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
+int spi_write_reg_rtos(spi_dev_t dev, GPIO_TypeDef *gpio, uint16_t pin,
 	uint8_t reg, uint8_t *data, uint16_t size)
 {
 	return send_message_rtos(dev, gpio, pin, &reg, 1, data, 0, size);
 }
 
-int spi_read_reg_rtos(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
+int spi_read_reg_rtos(spi_dev_t dev, GPIO_TypeDef *gpio, uint16_t pin,
 	uint8_t reg, uint8_t *data, uint16_t size)
 {
 	return send_message_rtos(dev, gpio, pin, &reg, 1, 0, data, size);
 }
 
-uint8_t spi_read_byte_rtos(spi_dev dev, GPIO_TypeDef *gpio,
+uint8_t spi_read_byte_rtos(spi_dev_t dev, GPIO_TypeDef *gpio,
 	uint16_t pin, uint8_t b)
 {
 	uint8_t n = dev->index - 1;

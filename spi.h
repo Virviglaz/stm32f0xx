@@ -54,7 +54,7 @@
 #include <stdbool.h>
 
 /* spi types redefinition */
-typedef const struct spi_dev_t * spi_dev;
+typedef const struct spi_dev *spi_dev_t;
 
 /**
   * @brief Lookup for a gpio settings to configure the spi.
@@ -68,7 +68,7 @@ typedef const struct spi_dev_t * spi_dev;
   *
   * @retval 0 if no settings found or a pointer to struct if success.
   */
-spi_dev find_spi_dev(GPIO_TypeDef *gpio, uint16_t pin_mask, uint32_t freq,
+spi_dev_t find_spi_dev(GPIO_TypeDef *gpio, uint16_t pin_mask, uint32_t freq,
 	bool idle_clock_high);
 
 /**
@@ -81,7 +81,7 @@ spi_dev find_spi_dev(GPIO_TypeDef *gpio, uint16_t pin_mask, uint32_t freq,
   *
   * @retval 0 if no settings found or a pointer to the device if success.
   */
-spi_dev get_spi_dev(uint8_t num, uint32_t freq, bool idle_clock_high);
+spi_dev_t get_spi_dev(uint8_t num, uint32_t freq, bool idle_clock_high);
 
 /**
   * @brief  Write data from buffer to register.
@@ -95,7 +95,7 @@ spi_dev get_spi_dev(uint8_t num, uint32_t freq, bool idle_clock_high);
   *
   * @retval 0 if success.
   */
-int spi_write_reg(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
+int spi_write_reg(spi_dev_t dev, GPIO_TypeDef *gpio, uint16_t pin,
 	uint8_t reg, uint8_t *data, uint16_t size);
 
 /**
@@ -110,7 +110,7 @@ int spi_write_reg(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
   *
   * @retval 0 if success.
   */
-int spi_read_reg(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
+int spi_read_reg(spi_dev_t dev, GPIO_TypeDef *gpio, uint16_t pin,
 	uint8_t reg, uint8_t *data, uint16_t size);
 
 /**
@@ -123,7 +123,7 @@ int spi_read_reg(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
   *
   * @retval received byte.
   */
-uint8_t spi_read_byte(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin, uint8_t b);
+uint8_t spi_read_byte(spi_dev_t dev, GPIO_TypeDef *gpio, uint16_t pin, uint8_t b);
 
 #ifdef FREERTOS
 
@@ -139,7 +139,7 @@ uint8_t spi_read_byte(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin, uint8_t b);
   *
   * @retval 0 if success.
   */
-int spi_write_reg_rtos(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
+int spi_write_reg_rtos(spi_dev_t dev, GPIO_TypeDef *gpio, uint16_t pin,
 	uint8_t reg, uint8_t *data, uint16_t size);
 
 /**
@@ -154,7 +154,7 @@ int spi_write_reg_rtos(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
   *
   * @retval 0 if success.
   */
-int spi_read_reg_rtos(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
+int spi_read_reg_rtos(spi_dev_t dev, GPIO_TypeDef *gpio, uint16_t pin,
 	uint8_t reg, uint8_t *data, uint16_t size);
 
 /**
@@ -167,7 +167,7 @@ int spi_read_reg_rtos(spi_dev dev, GPIO_TypeDef *gpio, uint16_t pin,
   *
   * @retval received byte.
   */
-uint8_t spi_read_byte_rtos(spi_dev dev, GPIO_TypeDef *gpio,
+uint8_t spi_read_byte_rtos(spi_dev_t dev, GPIO_TypeDef *gpio,
 	uint16_t pin, uint8_t b);
 
 #endif /* FREERTOS */
