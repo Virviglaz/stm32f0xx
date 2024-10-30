@@ -173,8 +173,7 @@ static inline void rx_isr(uart_dev_t *dev)
 			dev->buffers.rx.handler(dev->buffers.rx.buf,
 				dev->buffers.rx.size,
 				dev->buffers.rx.data);
-		dev->buffers.rx.cnt = 0;
-		dev->buffers.rx.done = true;
+		uart_disable_rx(dev);
 		return;
 	}
 
